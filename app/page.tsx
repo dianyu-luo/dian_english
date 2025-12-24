@@ -1,63 +1,59 @@
-import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
+  const pages = [
+    { title: "学习模式", description: "开始你的英语学习之旅", href: "/learning", icon: "📚", color: "from-blue-500 to-cyan-500" },
+    { title: "练习中心", description: "巩固已学知识", href: "/practice", icon: "✏️", color: "from-purple-500 to-pink-500" },
+    { title: "进度追踪", description: "查看你的学习进度", href: "/progress", icon: "📊", color: "from-green-500 to-emerald-500" },
+    { title: "设置", description: "个性化你的学习体验", href: "/settings", icon: "⚙️", color: "from-orange-500 to-red-500" },
+  ];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <main className="container mx-auto px-4 py-16">
+        {/* Header */}
+        <div className="text-center mb-16 animate-fade-in">
+          <h1 className="text-6xl font-bold text-white mb-4 tracking-tight">
+            Dian English
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-xl text-slate-300">
+            让英语学习变得简单而有趣
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Navigation Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          {pages.map((page, index) => (
+            <Link
+              key={page.href}
+              href={page.href}
+              className="group relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 p-8 transition-all duration-300 hover:scale-105 hover:bg-white/20 hover:shadow-2xl"
+              style={{ animationDelay: `${index * 100}ms` }}
+            >
+              <div className={`absolute inset-0 bg-gradient-to-br ${page.color} opacity-0 group-hover:opacity-20 transition-opacity duration-300`}></div>
+              
+              <div className="relative z-10">
+                <div className="text-5xl mb-4">{page.icon}</div>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  {page.title}
+                </h2>
+                <p className="text-slate-300">
+                  {page.description}
+                </p>
+              </div>
+              
+              <div className="absolute bottom-4 right-4 text-white/50 group-hover:text-white/100 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="text-center mt-16 text-slate-400">
+          <p>开始你的英语学习之旅 🚀</p>
         </div>
       </main>
     </div>
