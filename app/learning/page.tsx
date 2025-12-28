@@ -1,6 +1,12 @@
-import Link from "next/link";
 
+"use client";
+import Link from "next/link";
+import { Button, ConfigProvider } from "antd";
+import zhCN from 'antd/locale/zh_CN';
+import "antd/dist/reset.css";
+import { useRouter } from 'next/navigation';
 export default function Learning() {
+  const router = useRouter();
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-slate-900 dark:to-slate-800">
       <main className="container mx-auto px-4 py-16">
@@ -22,29 +28,33 @@ export default function Learning() {
             在这里开始你的英语学习之旅
           </p>
 
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-8">
-            <h2 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">
-              学习内容
-            </h2>
-            <ul className="space-y-4">
-              <li className="flex items-center text-gray-700 dark:text-gray-300">
-                <span className="text-2xl mr-4">✓</span>
-                <span>单词学习</span>
-              </li>
-              <li className="flex items-center text-gray-700 dark:text-gray-300">
-                <span className="text-2xl mr-4">✓</span>
-                <span>语法讲解</span>
-              </li>
-              <li className="flex items-center text-gray-700 dark:text-gray-300">
-                <span className="text-2xl mr-4">✓</span>
-                <span>听力训练</span>
-              </li>
-              <li className="flex items-center text-gray-700 dark:text-gray-300">
-                <span className="text-2xl mr-4">✓</span>
-                <span>口语练习</span>
-              </li>
-            </ul>
-          </div>
+          <ConfigProvider locale={zhCN}>
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-8">
+              <h2 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">
+                学习内容
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <Button
+                  type="primary"
+                  size="large"
+                  block
+                  style={{height: 60, fontSize: 20, borderRadius: 12, boxShadow: '0 2px 8px #1677ff22'}}
+                  onClick={() => router.push('/learning/word')}
+                >
+                  单词学习
+                </Button>
+                <Button type="default" size="large" block style={{height: 60, fontSize: 20, borderRadius: 12, boxShadow: '0 2px 8px #1677ff22'}}>
+                  语法讲解
+                </Button>
+                <Button type="dashed" size="large" block style={{height: 60, fontSize: 20, borderRadius: 12, boxShadow: '0 2px 8px #1677ff22'}}>
+                  听力训练
+                </Button>
+                <Button type="text" size="large" block style={{height: 60, fontSize: 20, borderRadius: 12, color: '#1677ff', background: '#f0f7ff', boxShadow: '0 2px 8px #1677ff22'}}>
+                  口语练习
+                </Button>
+              </div>
+            </div>
+          </ConfigProvider>
         </div>
       </main>
     </div>
