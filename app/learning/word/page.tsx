@@ -1,10 +1,38 @@
 "use client";
 import Link from "next/link";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function WordLearning() {
     const [word, setWord] = useState("");
+    const [result, setResult] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        if (!word) {
+            setResult(null);
+            setError("");
+            return;
+        }
+        setLoading(true);
+        setError("");
+        fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`)
+            .then(res => {
+                if (!res.ok) throw new Error("未找到释义");
+                return res.json();
+            })
+            .then(data => {
+                setResult(data[0]);
+                setError("");
+            })
+            .catch(e => {
+                setResult(null);
+                setError(e.message || "查询失败");
+            })
+            .finally(() => setLoading(false));
+    }, [word]);
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-slate-900 dark:to-slate-800">
             <main className="container mx-auto px-4 py-16">
@@ -30,7 +58,34 @@ export default function WordLearning() {
                         maxLength={32}
                         autoFocus
                     />
-
+                    {loading && <div className="text-blue-500 mb-4">加载中...</div>}
+                    {error && <div className="text-red-500 mb-4">{error}</div>}
+                    {result && (
+                        <div className="mb-4">
+                            <div className="flex items-center mb-2">
+                                <span className="text-2xl font-bold mr-4">{result.word}</span>
+                                {result.phonetics?.[0]?.text && (
+                                    <span className="text-blue-600 text-lg mr-2">[{result.phonetics[0].text}]</span>
+                                )}
+                                {result.phonetics?.[0]?.audio && (
+                                    <audio src={result.phonetics[0].audio} controls style={{ height: 28 }} />
+                                )}
+                            </div>
+                            {result.meanings?.map((m: any, i: number) => (
+                                <div key={i} className="mb-2">
+                                    <div className="font-semibold text-gray-700 dark:text-gray-200">{m.partOfSpeech}</div>
+                                    <ul className="list-disc ml-6 text-gray-700 dark:text-gray-300">
+                                        {m.definitions?.map((d: any, j: number) => (
+                                            <li key={j} className="mb-1">
+                                                {d.definition}
+                                                {d.example && <div className="text-sm text-gray-500 mt-1">例句: {d.example}</div>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </main>
         </div>
