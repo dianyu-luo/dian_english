@@ -1,0 +1,83 @@
+Table word_features {
+  id integer [primary key, increment]
+  feature varchar(128) [not null, note: '单词共性特征，如词根、词缀、词性等']
+  description text [note: '特征说明']
+  created_at datetime [default: `CURRENT_TIMESTAMP`]
+}
+
+Table word_feature_links {
+  id integer [primary key, increment]
+  word_id integer [ref: > words.id, not null, note: '关联单词']
+  feature_id integer [ref: > word_features.id, not null, note: '关联特征']
+  note text [note: '该单词与特征的具体关系说明，可为空']
+}
+Table grammar {
+  id integer [primary key, increment]
+  title varchar(128) [not null, unique, note: '语法点标题']
+  description text [not null, note: '语法说明']
+  created_at datetime [default: `CURRENT_TIMESTAMP`]
+}
+// 词汇学习数据库设计
+// 记录时间、学习单词、单词含义、单词、单词之间的联系、联想
+
+
+Table words {
+  id integer [primary key, increment]
+  word varchar(128) [unique, not null]
+  meaning text [not null, note: '单词含义']
+  created_at datetime [default: `CURRENT_TIMESTAMP`]
+}
+
+Table study_logs {
+  id integer [primary key, increment]
+  word_id integer [ref: > words.id, note: '关联单词，可为空']
+  feature_id integer [ref: > word_features.id, note: '关联特征，可为空']
+  grammar_id integer [ref: > grammar.id, note: '关联语法点，可为空']
+  action_type varchar(32) [not null, note: '操作类型，如学习、复习、标记、收藏等']
+  studied_at datetime [default: `CURRENT_TIMESTAMP`, note: '操作时间']
+  note text [note: '备注或联想']
+}
+
+Table word_relations {
+  id integer [primary key, increment]
+  word_id_from integer [ref: > words.id, note: '起始单词']
+  word_id_to integer [ref: > words.id, note: '关联单词']
+  relation_type varchar(32) [note: '关系类型，如同义、反义、联想等']
+  description text [note: '关系描述或联想说明']
+}
+
+
+Table notes {
+  id integer [primary key, increment]
+  word_id integer [ref: > words.id, note: '关联单词，可为空']
+  feature_id integer [ref: > word_features.id, note: '关联特征，可为空']
+  grammar_id integer [ref: > grammar.id, note: '关联语法点，可为空']
+  content text [not null, note: '笔记内容']
+  created_at datetime [default: `CURRENT_TIMESTAMP`]
+}
+
+Table note_feature_links {
+  id integer [primary key, increment]
+  note_id integer [ref: > notes.id, not null, note: '关联笔记']
+  feature_id integer [ref: > word_features.id, not null, note: '关联特征']
+  note text [note: '该笔记与特征的具体关系说明，可为空']
+}
+
+Table note_relations {
+  id integer [primary key, increment]
+  note_id_from integer [ref: > notes.id, note: '起始笔记']
+  note_id_to integer [ref: > notes.id, note: '关联笔记']
+  relation_type varchar(32) [note: '关系类型，如引用、补充、联想等']
+  description text [note: '关系描述']
+}
+
+// 说明：
+// words 记录所有单词及含义
+// study_logs 记录用户学习某单词的时间、备注、联想
+// word_relations 记录单词与单词之间的各种关系（同义、反义、联想等）
+// notes 记录学习笔记，可关联单词、特征、语法点
+// note_feature_links 记录笔记与单词共性特征的多对多关系
+// grammar 记录语法点及说明
+// word_features 记录单词共性特征
+// word_feature_links 记录单词与共性特征的多对多关系
+// note_relations 记录笔记与笔记之间的各种关系（引用、补充、联想等）

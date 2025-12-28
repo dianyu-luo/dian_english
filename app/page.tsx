@@ -1,6 +1,10 @@
+
+"use client";
 import Link from "next/link";
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const router = useRouter();
   const pages = [
     { title: "学习模式", description: "开始你的英语学习之旅", href: "/learning", icon: "📚", color: "from-blue-500 to-cyan-500" },
     { title: "练习中心", description: "巩固已学知识", href: "/practice", icon: "✏️", color: "from-purple-500 to-pink-500" },
@@ -54,6 +58,12 @@ export default function Home() {
         {/* Footer */}
         <div className="text-center mt-16 text-slate-400">
           <p>开始你的英语学习之旅 🚀</p>
+          <button
+            className="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded transition"
+            onClick={() => router.push('/test')}
+          >
+            跳转到测试页
+          </button>
         </div>
       </main>
     </div>
