@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { Tabs, Button, ConfigProvider } from "antd";
+import { Tabs, Button, ConfigProvider, message } from "antd";
 import zhCN from 'antd/locale/zh_CN';
 import "antd/dist/reset.css";
 
@@ -12,7 +12,20 @@ const tabItems = [
       <div>
         欢迎来到测试页面！
         <div style={{ marginTop: 16 }}>
-          <Button type="primary">点击我</Button>
+          <Button
+            type="primary"
+            onClick={async () => {
+              try {
+                // @ts-ignore
+                const res = await window.electronAPI?.createAndInsertTime?.();
+                message.success(res?.msg || '操作成功');
+              } catch (e) {
+                message.error('操作失败');
+              }
+            }}
+          >
+            点击我
+          </Button>
         </div>
       </div>
     ),

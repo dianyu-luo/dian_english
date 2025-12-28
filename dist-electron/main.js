@@ -34,6 +34,26 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
+const sqlite3 = __importStar(require("sqlite3"));
+// 监听渲染进程请求，创建数据库并插入当前时间
+electron_1.ipcMain.handle('create-and-insert-time', async () => {
+    try {
+        const dbPath = path.join(electron_1.app.getPath('userData'), 'testdb.sqlite');
+        const db = new sqlite3.Database(dbPath);
+        await new Promise((resolve, reject) => {
+            db.run('CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT)', err => (err ? reject(err) : resolve(null)));
+        });
+        const now = new Date().toISOString();
+        await new Promise((resolve, reject) => {
+            db.run('INSERT INTO logs (time) VALUES (?)', [now], err => (err ? reject(err) : resolve(null)));
+        });
+        db.close();
+        return { msg: '写入成功: ' + now };
+    }
+    catch (e) {
+        return { msg: '写入失败: ' + (e instanceof Error ? e.message : String(e)) };
+    }
+});
 const path = __importStar(require("path"));
 const isDev = __importStar(require("electron-is-dev"));
 let mainWindow = null;
