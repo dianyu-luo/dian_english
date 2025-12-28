@@ -66,7 +66,7 @@ export default function WordLearning() {
                     {loading && <div className="text-blue-500 mb-4">加载中...</div>}
                     {error && <div className="text-red-500 mb-4">{error}</div>}
                     {result && (
-                        <div className="mb-4">
+                        <div className="mb-4" style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, background: '#f8fafc' }}>
                             <div className="flex items-center mb-2">
                                 <span className="text-2xl font-bold mr-4">{result.word}</span>
                                 {result.phonetics?.[0]?.text && (
