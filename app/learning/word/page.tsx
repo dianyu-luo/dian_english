@@ -24,7 +24,9 @@ export default function WordLearning() {
         setError("");
         // 新增：调用后端接口记录单词查询
         if (typeof window !== 'undefined' && (window as any).electronAPI?.wordQueryRecord) {
-            (window as any).electronAPI.wordQueryRecord(word);
+            (window as any).electronAPI.wordQueryRecord(word).then((res: any) => {
+                console.log('wordQueryRecord 返回:', res);
+            });
         }
         fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`)
             .then(res => {

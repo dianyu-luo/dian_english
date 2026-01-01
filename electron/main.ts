@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 // 新增：单词查询记录接口（仅定义，暂不实现具体逻辑）
 ipcMain.handle('word-query-record', async (event, word: string) => {
-  // TODO: 查询数据库表，判断单词是否已存，未存则插入，已存则更新查询信息
-  // 这里只做接口定义，具体实现后续补充
+  console.log('收到前端单词查询请求:', word);
+  // ...其他逻辑...
   return { status: 'ok', msg: `已收到单词: ${word}` };
 });
 import * as sqlite3 from 'sqlite3';
