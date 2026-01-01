@@ -5,23 +5,17 @@ ipcMain.handle('word-query-record', async (event, word: string) => {
   // ...其他逻辑...
   return { status: 'ok', msg: `已收到单词: ${word}` };
 });
-import * as sqlite3 from 'sqlite3';
+import { openDb, closeDb, ensureLogsTable, insertLog } from './db';
+import { getBeijingTimeString } from './utils';
 // 监听渲染进程请求，创建数据库并插入当前时间
 ipcMain.handle('create-and-insert-time', async () => {
   try {
-    const dbPath = path.join(app.getPath('userData'), 'testdb.sqlite');
-    const db = new sqlite3.Database(dbPath);
-    await new Promise((resolve, reject) => {
-      db.run(
-        'CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT)',
-        err => (err ? reject(err) : resolve(null))
-      );
-    });
-    const now = new Date().toISOString();
-    await new Promise((resolve, reject) => {
-      db.run('INSERT INTO logs (time) VALUES (?)', [now], err => (err ? reject(err) : resolve(null)));
-    });
-    db.close();
+    const db = openDb();
+    await ensureLogsTable(db);
+    // 获取北京时间（东八区）字符串
+    const now = getBeijingTimeString();
+    await insertLog(db, now);
+    // 不主动关闭数据库，保持单例连接
     return { msg: '写入成功: ' + now };
   } catch (e) {
     return { msg: '写入失败: ' + (e instanceof Error ? e.message : String(e)) };
