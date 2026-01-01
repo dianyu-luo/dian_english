@@ -23,11 +23,6 @@ export default function WordLearning() {
         const handler = setTimeout(() => {
             setLoading(true);
             setError("");
-            if (typeof window !== 'undefined' && (window as any).electronAPI?.wordQueryRecord) {
-                (window as any).electronAPI.wordQueryRecord(word).then((res: any) => {
-                    console.log('wordQueryRecord 返回:', res);
-                });
-            }
             fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`)
                 .then(res => {
                     if (!res.ok) throw new Error("未找到释义");
@@ -36,6 +31,12 @@ export default function WordLearning() {
                 .then(data => {
                     setResult(data[0]);
                     setError("");
+                    // 只有查到释义时才向后端发送请求
+                    if (typeof window !== 'undefined' && (window as any).electronAPI?.wordQueryRecord) {
+                        (window as any).electronAPI.wordQueryRecord(word).then((res: any) => {
+                            console.log('wordQueryRecord 返回:', res);
+                        });
+                    }
                 })
                 .catch(e => {
                     setResult(null);
