@@ -11,7 +11,7 @@ export default function WordLearning() {
     // 笔记列表
     const [notes, setNotes] = useState<string[]>([]);
     const [newNote, setNewNote] = useState("");
-    const [editIdx, setEditIdx] = useState<number|null>(null);
+    const [editIdx, setEditIdx] = useState<number | null>(null);
     const [editVal, setEditVal] = useState("");
 
     useEffect(() => {
@@ -91,50 +91,50 @@ export default function WordLearning() {
                             ))}
                         </div>
                     )}
-                                </div>
-                                {/* 笔记列表 */}
-                                <div className="mt-8">
-                                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-white">单词笔记</h2>
-                                    <div className="flex mb-4 gap-2">
+                </div>
+                {/* 笔记列表 */}
+                <div className="mt-8">
+                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-white">单词笔记</h2>
+                    <div className="flex mb-4 gap-2">
+                        <input
+                            type="text"
+                            className="flex-1 px-3 py-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            placeholder="添加新笔记..."
+                            value={newNote}
+                            onChange={e => setNewNote(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && newNote.trim()) { setNotes([...notes, newNote.trim()]); setNewNote(""); } }}
+                        />
+                        <button
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                            onClick={() => { if (newNote.trim()) { setNotes([...notes, newNote.trim()]); setNewNote(""); } }}
+                        >添加</button>
+                    </div>
+                    <ul className="space-y-2">
+                        {notes.map((note, idx) => (
+                            <li key={idx} className="flex items-center gap-2 bg-gray-100 dark:bg-slate-700 rounded px-3 py-2">
+                                {editIdx === idx ? (
+                                    <>
                                         <input
-                                            type="text"
-                                            className="flex-1 px-3 py-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                            placeholder="添加新笔记..."
-                                            value={newNote}
-                                            onChange={e => setNewNote(e.target.value)}
-                                            onKeyDown={e => { if (e.key === 'Enter' && newNote.trim()) { setNotes([...notes, newNote.trim()]); setNewNote(""); }}}
+                                            className="flex-1 px-2 py-1 rounded border border-gray-300"
+                                            value={editVal}
+                                            onChange={e => setEditVal(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') { setNotes(notes.map((n, i) => i === idx ? editVal : n)); setEditIdx(null); } }}
+                                            autoFocus
                                         />
-                                        <button
-                                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                                            onClick={() => { if (newNote.trim()) { setNotes([...notes, newNote.trim()]); setNewNote(""); }}}
-                                        >添加</button>
-                                    </div>
-                                    <ul className="space-y-2">
-                                        {notes.map((note, idx) => (
-                                            <li key={idx} className="flex items-center gap-2 bg-gray-100 dark:bg-slate-700 rounded px-3 py-2">
-                                                {editIdx === idx ? (
-                                                    <>
-                                                        <input
-                                                            className="flex-1 px-2 py-1 rounded border border-gray-300"
-                                                            value={editVal}
-                                                            onChange={e => setEditVal(e.target.value)}
-                                                            onKeyDown={e => { if (e.key === 'Enter') { setNotes(notes.map((n, i) => i === idx ? editVal : n)); setEditIdx(null); }}}
-                                                            autoFocus
-                                                        />
-                                                        <button className="text-blue-600" onClick={() => { setNotes(notes.map((n, i) => i === idx ? editVal : n)); setEditIdx(null); }}>保存</button>
-                                                        <button className="text-gray-500" onClick={() => setEditIdx(null)}>取消</button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <span className="flex-1 break-all">{note}</span>
-                                                        <button className="text-blue-600" onClick={() => { setEditIdx(idx); setEditVal(note); }}>编辑</button>
-                                                        <button className="text-red-500" onClick={() => setNotes(notes.filter((_, i) => i !== idx))}>删除</button>
-                                                    </>
-                                                )}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
+                                        <button className="text-blue-600" onClick={() => { setNotes(notes.map((n, i) => i === idx ? editVal : n)); setEditIdx(null); }}>保存</button>
+                                        <button className="text-gray-500" onClick={() => setEditIdx(null)}>取消</button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="flex-1 break-all">{note}</span>
+                                        <button className="text-blue-600" onClick={() => { setEditIdx(idx); setEditVal(note); }}>编辑</button>
+                                        <button className="text-red-500" onClick={() => setNotes(notes.filter((_, i) => i !== idx))}>删除</button>
+                                    </>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </main>
         </div>
     );
