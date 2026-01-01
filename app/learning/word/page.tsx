@@ -22,6 +22,10 @@ export default function WordLearning() {
         }
         setLoading(true);
         setError("");
+        // 新增：调用后端接口记录单词查询
+        if (typeof window !== 'undefined' && (window as any).electronAPI?.wordQueryRecord) {
+            (window as any).electronAPI.wordQueryRecord(word);
+        }
         fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`)
             .then(res => {
                 if (!res.ok) throw new Error("未找到释义");
