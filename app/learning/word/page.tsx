@@ -20,30 +20,28 @@ export default function WordLearning() {
             setError("");
             return;
         }
-        const handler = setTimeout(() => {
-            setLoading(true);
-            setError("");
-            if (typeof window !== 'undefined' && (window as any).electronAPI?.wordQueryRecord) {
-                (window as any).electronAPI.wordQueryRecord(word).then((res: any) => {
-                    console.log('wordQueryRecord 返回:', res);
-                });
-            }
-            fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`)
-                .then(res => {
-                    if (!res.ok) throw new Error("未找到释义");
-                    return res.json();
-                })
-                .then(data => {
-                    setResult(data[0]);
-                    setError("");
-                })
-                .catch(e => {
-                    setResult(null);
-                    setError(e.message || "查询失败");
-                })
-                .finally(() => setLoading(false));
-        }, 500); // 500ms 防抖
-        return () => clearTimeout(handler);
+        setLoading(true);
+        setError("");
+        // 新增：调用后端接口记录单词查询
+        if (typeof window !== 'undefined' && (window as any).electronAPI?.wordQueryRecord) {
+            (window as any).electronAPI.wordQueryRecord(word).then((res: any) => {
+                console.log('wordQueryRecord 返回:', res);
+            });
+        }
+        fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`)
+            .then(res => {
+                if (!res.ok) throw new Error("未找到释义");
+                return res.json();
+            })
+            .then(data => {
+                setResult(data[0]);
+                setError("");
+            })
+            .catch(e => {
+                setResult(null);
+                setError(e.message || "查询失败");
+            })
+            .finally(() => setLoading(false));
     }, [word]);
 
     // 新增：调用自定义IPC接口
