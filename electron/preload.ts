@@ -4,4 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   createAndInsertTime: () => ipcRenderer.invoke('create-and-insert-time'),
   wordQueryRecord: (word: string) => ipcRenderer.invoke('word-query-record', word),
+  createNote: (wordId: number, content: string) => ipcRenderer.invoke('create-note', wordId, content),
+  updateNote: (wordId: number, noteId: number, content: string) => ipcRenderer.invoke('update-note', wordId, noteId, content),
+  deleteNote: (wordId: number, noteId: number) => ipcRenderer.invoke('delete-note', wordId, noteId),
 });
