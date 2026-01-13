@@ -47,6 +47,19 @@ export default function WordLearning() {
         return () => clearTimeout(handler);
     }, [word]);
 
+    // 新增：调用自定义IPC接口
+    const callCustomIpc = async () => {
+        if (typeof window !== 'undefined' && (window as any).electronAPI?.customWordIpc) {
+            try {
+                const res = await (window as any).electronAPI.customWordIpc(word);
+                alert('自定义IPC返回: ' + JSON.stringify(res));
+            } catch (e) {
+                alert('IPC调用失败: ' + (e instanceof Error ? e.message : String(e)));
+            }
+        } else {
+            alert('electronAPI.customWordIpc 不存在');
+        }
+    };
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-slate-900 dark:to-slate-800">
             <main className="container mx-auto px-4 py-16">
@@ -72,6 +85,12 @@ export default function WordLearning() {
                         maxLength={32}
                         autoFocus
                     />
+                    {/* 新增按钮，调用自定义IPC接口 */}
+                    <button
+                        className="ml-2 mb-6 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+                        onClick={callCustomIpc}
+                        disabled={!word}
+                    >测试自定义IPC</button>
                     {loading && <div className="text-blue-500 mb-4">加载中...</div>}
                     {error && <div className="text-red-500 mb-4">{error}</div>}
                     {result && (
