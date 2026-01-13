@@ -83,11 +83,7 @@ export default function WordLearning() {
                         autoFocus
                     />
                     {/* 新增按钮，调用自定义IPC接口 */}
-                    <button
-                        className="ml-2 mb-6 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
-                        onClick={callCustomIpc}
-                        disabled={!word}
-                    >测试自定义IPC</button>
+
                     {loading && <div className="text-blue-500 mb-4">加载中...</div>}
                     {error && <div className="text-red-500 mb-4">{error}</div>}
                     {result && (
