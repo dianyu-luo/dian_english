@@ -5,10 +5,10 @@ import { useState } from "react";
 
 export default function TestPage() {
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<"file" | "hello" | null>(null);
 
   async function handleCreateFile() {
-    setLoading(true);
+    setLoading("file");
     setMessage("");
     try {
       const res = await fetch("/api/test/create-file", { method: "POST" });
@@ -20,7 +20,26 @@ export default function TestPage() {
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "创建失败");
     } finally {
-      setLoading(false);
+      setLoading(null);
+    }
+  }
+
+  async function handleHelloTest() {
+    setLoading("hello");
+    setMessage("");
+    try {
+      const res = await fetch("/api/test/hello", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "写入失败");
+      }
+      setMessage(
+        `hello_test：id=${data.id}，uuid=${data.uuid}，time=${data.createdAt}`,
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "写入失败");
+    } finally {
+      setLoading(null);
     }
   }
 
@@ -39,16 +58,26 @@ export default function TestPage() {
         <section className="space-y-4">
           <h1 className="text-3xl font-semibold tracking-tight">测试页</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            点击按钮会在 tmp/ 生成时间戳文件，并写入 SQLite（data/app.db）。
+            测试写文件与写入 SQLite（data/app.db）。
           </p>
-          <button
-            type="button"
-            onClick={handleCreateFile}
-            disabled={loading}
-            className="border border-[#d6d3d1] bg-[#faf8f4] px-4 py-2 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
-          >
-            {loading ? "生成中…" : "生成文件"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleCreateFile}
+              disabled={loading !== null}
+              className="border border-[#d6d3d1] bg-[#faf8f4] px-4 py-2 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+            >
+              {loading === "file" ? "生成中…" : "生成文件"}
+            </button>
+            <button
+              type="button"
+              onClick={handleHelloTest}
+              disabled={loading !== null}
+              className="border border-[#d6d3d1] bg-[#faf8f4] px-4 py-2 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+            >
+              {loading === "hello" ? "写入中…" : "写入 hello_test"}
+            </button>
+          </div>
           {message ? (
             <p className="text-sm text-[#57534e]">{message}</p>
           ) : null}
