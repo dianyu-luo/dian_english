@@ -16,7 +16,7 @@ export default function TestPage() {
       if (!res.ok) {
         throw new Error(data.error ?? "创建失败");
       }
-      setMessage(`已生成：tmp/${data.filename}`);
+      setMessage(`已生成：tmp/${data.filename}（数据库 id=${data.id}）`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "创建失败");
     } finally {
@@ -39,7 +39,7 @@ export default function TestPage() {
         <section className="space-y-4">
           <h1 className="text-3xl font-semibold tracking-tight">测试页</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            点击按钮会在项目根目录的 tmp/ 下生成一个以时间戳命名的文件。
+            点击按钮会在 tmp/ 生成时间戳文件，并写入 SQLite（data/app.db）。
           </p>
           <button
             type="button"

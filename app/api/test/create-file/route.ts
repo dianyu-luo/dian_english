@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { testFiles } from "@/lib/db/schema";
 
 export async function POST() {
   const timestamp = Date.now();
@@ -11,5 +13,14 @@ export async function POST() {
   const filepath = path.join(dir, filename);
   await writeFile(filepath, "", "utf8");
 
-  return NextResponse.json({ ok: true, filename });
+  const [row] = await db
+    .insert(testFiles)
+    .values({ name: filename })
+    .returning();
+
+  return NextResponse.json({
+    ok: true,
+    filename,
+    id: row.id,
+  });
 }
