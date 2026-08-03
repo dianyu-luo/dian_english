@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
@@ -14,6 +16,12 @@ export default function Home() {
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
             欢迎回来。这里是项目首页，后续可以把用户、数据和常用操作接到这里。
           </p>
+          <Link
+            href="/test"
+            className="inline-block mt-4 border border-[#d6d3d1] bg-[#faf8f4] px-4 py-2 text-sm font-medium hover:bg-[#f0ebe3]"
+          >
+            测试
+          </Link>
         </section>
 
         <section className="mt-10 grid gap-6 sm:grid-cols-3">
