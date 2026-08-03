@@ -33,8 +33,18 @@ export default function TestPage() {
       if (!res.ok) {
         throw new Error(data.error ?? "写入失败");
       }
+      const time = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(new Date(data.createdAt));
       setMessage(
-        `hello_test：id=${data.id}，uuid=${data.uuid}，time=${data.createdAt}`,
+        `hello_test：id=${data.id}，uuid=${data.uuid}，time=${time}`,
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "写入失败");
