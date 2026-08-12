@@ -28,6 +28,7 @@ type SavedMark = {
   contextBefore: string;
   contextAfter: string;
   createdAt: string | number | Date;
+  updatedAt: string | number | Date;
 };
 
 type RecentItem = {
@@ -91,11 +92,9 @@ export default function PdfPageClient() {
           throw new Error(data.error ?? "保存失败");
         }
         const savePart =
-          data.created === false ? `已存在 #${data.item.id}` : `已保存 #${data.item.id}`;
+          data.created === false ? `已更新 #${data.item.id}` : `已保存 #${data.item.id}`;
         setSaveMessage(copied ? `已复制 · ${savePart}` : savePart);
-        if (data.created !== false) {
-          await loadMarks(info.fileName);
-        }
+        await loadMarks(info.fileName);
       } catch (err) {
         setSaveMessage(err instanceof Error ? err.message : "保存失败");
       } finally {

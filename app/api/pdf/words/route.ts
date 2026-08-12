@@ -29,12 +29,12 @@ export async function GET(request: Request) {
         .select()
         .from(pdfWordMarks)
         .where(eq(pdfWordMarks.fileName, fileName))
-        .orderBy(desc(pdfWordMarks.createdAt))
+        .orderBy(desc(pdfWordMarks.updatedAt))
         .limit(limit)
     : await db
         .select()
         .from(pdfWordMarks)
-        .orderBy(desc(pdfWordMarks.createdAt))
+        .orderBy(desc(pdfWordMarks.updatedAt))
         .limit(limit);
 
   return NextResponse.json({ ok: true, items: rows });
@@ -88,8 +88,21 @@ export async function POST(request: Request) {
     )
     .limit(1);
 
+  const now = new Date();
+
   if (existing) {
-    return NextResponse.json({ ok: true, item: existing, created: false });
+    const [row] = await db
+      .update(pdfWordMarks)
+      .set({
+        raw,
+        contextBefore: body.contextBefore ?? existing.contextBefore,
+        contextAfter: body.contextAfter ?? existing.contextAfter,
+        locator,
+        updatedAt: now,
+      })
+      .where(eq(pdfWordMarks.id, existing.id))
+      .returning();
+    return NextResponse.json({ ok: true, item: row, created: false });
   }
 
   const [row] = await db
@@ -106,7 +119,8 @@ export async function POST(request: Request) {
       contextBefore: body.contextBefore ?? "",
       contextAfter: body.contextAfter ?? "",
       locator,
-      createdAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
     })
     .returning();
 
