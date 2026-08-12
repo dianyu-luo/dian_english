@@ -77,6 +77,7 @@ export default function PdfViewer({
   const [pageInput, setPageInput] = useState("1");
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
@@ -85,6 +86,16 @@ export default function PdfViewer({
   const restorePageRef = useRef<number | null>(null);
   const skipPersistRef = useRef(true);
   const highlightTimerRef = useRef<number | null>(null);
+
+  const centerHighlight = useCallback(() => {
+    const el = highlightRef.current;
+    if (!el) return;
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "center",
+    });
+  }, []);
 
   useEffect(() => {
     onWordSelectRef.current = onWordSelect;
@@ -182,15 +193,13 @@ export default function PdfViewer({
     return () => window.clearTimeout(timer);
   }, [fileName, pageNumber, file]);
 
-  // 点击已保存标记：跳页并高亮
+  // 点击已保存标记：跳页并高亮（高亮后居中，不滚到页面顶部）
   useEffect(() => {
     if (!jumpRequest) return;
 
     let cancelled = false;
 
     (async () => {
-      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-
       try {
         if (jumpRequest.fileName !== fileNameRef.current) {
           const item = await fetchRecentByFileName(jumpRequest.fileName);
@@ -333,6 +342,23 @@ export default function PdfViewer({
     // 两侧窄条翻页按钮各约 40px，再留一点边距
     return Math.min(containerWidth - 96, 900) * scale;
   }, [containerWidth, scale]);
+
+  // 高亮出现且页面已是目标页时，把单词滚到视口中央（不是滚到阅读器顶部）
+  useEffect(() => {
+    if (!highlight || highlight.pageNumber !== pageNumber) return;
+
+    const timers = [
+      window.setTimeout(centerHighlight, 50),
+      window.setTimeout(centerHighlight, 280),
+    ];
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, [highlight, pageNumber, pageWidth, centerHighlight]);
+
+  const onPageRenderSuccess = useCallback(() => {
+    if (highlightRef.current) {
+      centerHighlight();
+    }
+  }, [centerHighlight]);
 
   return (
     <div ref={rootRef} className="space-y-4">
@@ -498,10 +524,12 @@ export default function PdfViewer({
                   width={pageWidth}
                   renderTextLayer
                   renderAnnotationLayer
+                  onRenderSuccess={onPageRenderSuccess}
                   loading={<p className="py-16 text-sm text-[#78716c]">渲染中…</p>}
                 />
                 {highlight && highlight.pageNumber === pageNumber ? (
                   <div
+                    ref={highlightRef}
                     aria-label={`高亮 ${highlight.word}`}
                     className="pointer-events-none absolute z-10 bg-[#fbbf24]/55 ring-2 ring-[#d97706] transition-opacity"
                     style={{
