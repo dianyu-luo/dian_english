@@ -27,6 +27,7 @@
 # sqlite
 /data/*.db
 /data/*.db-*
+/data/pdfs/
 !/data/.gitkeep
 /tmp/
 

@@ -29,11 +29,18 @@ type SavedMark = {
   createdAt: string | number | Date;
 };
 
+type RecentItem = {
+  fileName: string;
+  pageNumber: number;
+  url: string;
+};
+
 export default function PdfPageClient() {
   const [selected, setSelected] = useState<PdfWordSelectInfo | null>(null);
   const [saveMessage, setSaveMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [marks, setMarks] = useState<SavedMark[]>([]);
+  const [recent, setRecent] = useState<RecentItem | null>(null);
 
   const loadMarks = useCallback(async (fileName?: string) => {
     const qs = fileName ? `?fileName=${encodeURIComponent(fileName)}` : "";
@@ -98,8 +105,15 @@ export default function PdfPageClient() {
         <section className="mb-6 space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">PDF 阅读</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            选中单词会写入数据库（含页码、比例坐标与前后文）。
+            选中单词会写入数据库；阅读进度记入「最近阅读」，下次自动打开到对应页。
           </p>
+          {recent ? (
+            <p className="text-sm text-[#57534e]">
+              最近阅读：
+              <span className="font-medium text-[#1c1917]">{recent.fileName}</span>
+              <span className="text-[#a8a29e]"> · 第 {recent.pageNumber} 页</span>
+            </p>
+          ) : null}
           {selected ? (
             <div className="space-y-1 text-sm text-[#57534e]">
               <p>
@@ -123,7 +137,7 @@ export default function PdfPageClient() {
           ) : null}
         </section>
 
-        <PdfViewer onWordSelect={handleWordSelect} />
+        <PdfViewer onWordSelect={handleWordSelect} onRecentChange={setRecent} />
 
         {marks.length > 0 ? (
           <section className="mt-8 space-y-3 border-t border-[#d6d3d1] pt-6">

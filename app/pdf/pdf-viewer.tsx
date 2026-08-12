@@ -13,11 +13,26 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 type PdfSource = File | string | null;
 
-type PdfViewerProps = {
-  onWordSelect?: OnPdfWordSelect;
+type RecentItem = {
+  fileName: string;
+  pageNumber: number;
+  url: string;
 };
 
-export default function PdfViewer({ onWordSelect }: PdfViewerProps) {
+type PdfViewerProps = {
+  onWordSelect?: OnPdfWordSelect;
+  onRecentChange?: (item: RecentItem | null) => void;
+};
+
+async function saveRecentPage(fileName: string, pageNumber: number) {
+  await fetch("/api/pdf/recent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileName, pageNumber }),
+  });
+}
+
+export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerProps) {
   const [file, setFile] = useState<PdfSource>(null);
   const [fileName, setFileName] = useState("");
   const [numPages, setNumPages] = useState(0);
@@ -25,16 +40,25 @@ export default function PdfViewer({ onWordSelect }: PdfViewerProps) {
   const [scale, setScale] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [booting, setBooting] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const onWordSelectRef = useRef(onWordSelect);
+  const onRecentChangeRef = useRef(onRecentChange);
   const pageNumberRef = useRef(pageNumber);
   const fileNameRef = useRef(fileName);
+  const restorePageRef = useRef<number | null>(null);
+  const skipPersistRef = useRef(true);
 
   useEffect(() => {
     onWordSelectRef.current = onWordSelect;
   }, [onWordSelect]);
+
+  useEffect(() => {
+    onRecentChangeRef.current = onRecentChange;
+  }, [onRecentChange]);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
@@ -55,6 +79,59 @@ export default function PdfViewer({ onWordSelect }: PdfViewerProps) {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // 进入页面：恢复最近阅读的文件与页码
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/pdf/recent");
+        const data = await res.json();
+        if (!res.ok || !data.ok || !data.item || cancelled) {
+          onRecentChangeRef.current?.(null);
+          return;
+        }
+
+        const item = data.item as RecentItem;
+        restorePageRef.current = item.pageNumber;
+        skipPersistRef.current = true;
+        setFile(item.url);
+        setFileName(item.fileName);
+        setPageNumber(item.pageNumber);
+        setScale(1);
+        onRecentChangeRef.current?.(item);
+      } catch {
+        onRecentChangeRef.current?.(null);
+      } finally {
+        if (!cancelled) setBooting(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 翻页时写入最近阅读
+  useEffect(() => {
+    if (!fileName || !file || skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void saveRecentPage(fileName, pageNumber).then(() => {
+        onRecentChangeRef.current?.({
+          fileName,
+          pageNumber,
+          url: typeof file === "string" ? file : "",
+        });
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [fileName, pageNumber, file]);
 
   const handleTextSelect = useCallback(() => {
     const el = containerRef.current;
@@ -82,23 +159,48 @@ export default function PdfViewer({ onWordSelect }: PdfViewerProps) {
     return () => el.removeEventListener("mouseup", handleTextSelect);
   }, [handleTextSelect, file]);
 
-  const openFile = useCallback((next: File | null) => {
+  const openFile = useCallback(async (next: File | null) => {
     if (!next) return;
     if (next.type !== "application/pdf" && !next.name.toLowerCase().endsWith(".pdf")) {
       setError("请选择 PDF 文件");
       return;
     }
+
+    setUploading(true);
     setError(null);
-    setFile(next);
-    setFileName(next.name);
-    setPageNumber(1);
-    setNumPages(0);
-    setScale(1);
+    try {
+      const form = new FormData();
+      form.append("file", next);
+      const res = await fetch("/api/pdf/recent", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "上传失败");
+      }
+
+      const item = data.item as RecentItem;
+      restorePageRef.current = item.pageNumber;
+      skipPersistRef.current = true;
+      setFile(item.url);
+      setFileName(item.fileName);
+      setPageNumber(item.pageNumber);
+      setNumPages(0);
+      setScale(1);
+      onRecentChangeRef.current?.(item);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploading(false);
+    }
   }, []);
 
   const onDocumentLoadSuccess = useCallback(({ numPages: total }: { numPages: number }) => {
     setNumPages(total);
-    setPageNumber(1);
+    const restore = restorePageRef.current;
+    restorePageRef.current = null;
+    if (restore != null) {
+      skipPersistRef.current = true;
+      setPageNumber(Math.min(Math.max(1, restore), total));
+    }
     setError(null);
   }, []);
 
@@ -113,20 +215,24 @@ export default function PdfViewer({ onWordSelect }: PdfViewerProps) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="border border-[#d6d3d1] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3]"
+          disabled={uploading}
+          className="border border-[#d6d3d1] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
         >
-          打开 PDF
+          {uploading ? "上传中…" : "打开 PDF"}
         </button>
         <input
           ref={inputRef}
           type="file"
           accept="application/pdf,.pdf"
           className="hidden"
-          onChange={(e) => openFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            void openFile(e.target.files?.[0] ?? null);
+            e.target.value = "";
+          }}
         />
 
         <span className="min-w-0 flex-1 truncate text-sm text-[#78716c]">
-          {fileName || "未选择文件"}
+          {fileName || (booting ? "恢复最近阅读…" : "未选择文件")}
         </span>
 
         <div className="flex items-center gap-1">
@@ -192,20 +298,24 @@ export default function PdfViewer({ onWordSelect }: PdfViewerProps) {
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          openFile(e.dataTransfer.files?.[0] ?? null);
+          void openFile(e.dataTransfer.files?.[0] ?? null);
         }}
         className={`min-h-[70vh] border border-[#e7e2d9] bg-[#efebe4] ${
           dragging ? "outline outline-2 outline-[#a8a29e]" : ""
         }`}
       >
-        {!file ? (
+        {booting ? (
+          <div className="flex min-h-[70vh] items-center justify-center">
+            <p className="text-sm text-[#78716c]">正在恢复上次阅读…</p>
+          </div>
+        ) : !file ? (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             className="flex min-h-[70vh] w-full flex-col items-center justify-center gap-2 px-6 text-center"
           >
             <p className="text-base font-medium text-[#1c1917]">拖入或选择 PDF</p>
-            <p className="text-sm text-[#78716c]">支持本地文件预览与翻页阅读</p>
+            <p className="text-sm text-[#78716c]">打开后会记住文件与页码，下次自动续读</p>
           </button>
         ) : (
           <div className="flex justify-center overflow-auto p-4">
