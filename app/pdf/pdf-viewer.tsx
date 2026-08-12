@@ -318,9 +318,20 @@ export default function PdfViewer({
     setPageInput(String(next));
   }, [file, numPages, pageInput, pageNumber]);
 
+  const goPrevPage = useCallback(() => {
+    setHighlight(null);
+    setPageNumber((p) => Math.max(1, p - 1));
+  }, []);
+
+  const goNextPage = useCallback(() => {
+    setHighlight(null);
+    setPageNumber((p) => Math.min(numPages, p + 1));
+  }, [numPages]);
+
   const pageWidth = useMemo(() => {
     if (!containerWidth) return undefined;
-    return Math.min(containerWidth - 32, 900) * scale;
+    // 两侧窄条翻页按钮各约 40px，再留一点边距
+    return Math.min(containerWidth - 96, 900) * scale;
   }, [containerWidth, scale]);
 
   return (
@@ -353,10 +364,7 @@ export default function PdfViewer({
           <button
             type="button"
             disabled={!file || pageNumber <= 1}
-            onClick={() => {
-              setHighlight(null);
-              setPageNumber((p) => Math.max(1, p - 1));
-            }}
+            onClick={goPrevPage}
             className="border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
             aria-label="上一页"
           >
@@ -386,10 +394,7 @@ export default function PdfViewer({
           <button
             type="button"
             disabled={!file || pageNumber >= numPages}
-            onClick={() => {
-              setHighlight(null);
-              setPageNumber((p) => Math.min(numPages, p + 1));
-            }}
+            onClick={goNextPage}
             className="border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
             aria-label="下一页"
           >
@@ -438,10 +443,33 @@ export default function PdfViewer({
           setDragging(false);
           void openFile(e.dataTransfer.files?.[0] ?? null);
         }}
-        className={`min-h-[70vh] border border-[#e7e2d9] bg-[#efebe4] ${
+        className={`relative min-h-[70vh] border border-[#e7e2d9] bg-[#efebe4] ${
           dragging ? "outline outline-2 outline-[#a8a29e]" : ""
         }`}
       >
+        {file && !booting ? (
+          <>
+            <button
+              type="button"
+              disabled={pageNumber <= 1}
+              onClick={goPrevPage}
+              className="absolute top-0 bottom-0 left-0 z-20 w-10 border-r border-[#e7e2d9] bg-[#faf8f4]/90 text-2xl text-[#57534e] transition-colors hover:bg-[#f0ebe3] disabled:cursor-default disabled:opacity-30"
+              aria-label="上一页"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              disabled={pageNumber >= numPages}
+              onClick={goNextPage}
+              className="absolute top-0 bottom-0 right-0 z-20 w-10 border-l border-[#e7e2d9] bg-[#faf8f4]/90 text-2xl text-[#57534e] transition-colors hover:bg-[#f0ebe3] disabled:cursor-default disabled:opacity-30"
+              aria-label="下一页"
+            >
+              ›
+            </button>
+          </>
+        ) : null}
+
         {booting ? (
           <div className="flex min-h-[70vh] items-center justify-center">
             <p className="text-sm text-[#78716c]">正在恢复上次阅读…</p>
@@ -456,7 +484,7 @@ export default function PdfViewer({
             <p className="text-sm text-[#78716c]">打开后会记住文件与页码，下次自动续读</p>
           </button>
         ) : (
-          <div className="flex justify-center overflow-auto p-4">
+          <div className="flex justify-center overflow-auto px-12 py-4">
             <Document
               file={file}
               onLoadSuccess={onDocumentLoadSuccess}
