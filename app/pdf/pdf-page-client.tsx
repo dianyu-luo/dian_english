@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 
 const PdfViewer = dynamic(() => import("./pdf-viewer"), {
@@ -14,14 +14,74 @@ const PdfViewer = dynamic(() => import("./pdf-viewer"), {
   ),
 });
 
+type SavedMark = {
+  id: number;
+  fileName: string;
+  word: string;
+  raw: string;
+  pageNumber: number;
+  rectLeft: number;
+  rectTop: number;
+  rectWidth: number;
+  rectHeight: number;
+  contextBefore: string;
+  contextAfter: string;
+  createdAt: string | number | Date;
+};
+
 export default function PdfPageClient() {
   const [selected, setSelected] = useState<PdfWordSelectInfo | null>(null);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [marks, setMarks] = useState<SavedMark[]>([]);
 
-  const handleWordSelect = useCallback((info: PdfWordSelectInfo) => {
-    setSelected(info);
-    // 可把 info.locator 存起来，下次用 pageNumber + rect + context 找回
-    console.log("[pdf] word selected", info);
+  const loadMarks = useCallback(async (fileName?: string) => {
+    const qs = fileName ? `?fileName=${encodeURIComponent(fileName)}` : "";
+    const res = await fetch(`/api/pdf/words${qs}`);
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      setMarks(data.items as SavedMark[]);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadMarks();
+  }, [loadMarks]);
+
+  const handleWordSelect = useCallback(
+    async (info: PdfWordSelectInfo) => {
+      setSelected(info);
+      setSaving(true);
+      setSaveMessage("");
+      try {
+        const res = await fetch("/api/pdf/words", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: info.fileName,
+            word: info.word,
+            raw: info.raw,
+            pageNumber: info.pageNumber,
+            rect: info.rect,
+            contextBefore: info.contextBefore,
+            contextAfter: info.contextAfter,
+            locator: info.locator,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "保存失败");
+        }
+        setSaveMessage(`已保存 #${data.item.id}`);
+        await loadMarks(info.fileName);
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : "保存失败");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadMarks],
+  );
 
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
@@ -38,7 +98,7 @@ export default function PdfPageClient() {
         <section className="mb-6 space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">PDF 阅读</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            打开本地 PDF，翻页浏览；选中文字会返回单词与位置信息。
+            选中单词会写入数据库（含页码、比例坐标与前后文）。
           </p>
           {selected ? (
             <div className="space-y-1 text-sm text-[#57534e]">
@@ -49,23 +109,39 @@ export default function PdfPageClient() {
                   {" "}
                   · {selected.fileName} · 第 {selected.pageNumber} 页
                 </span>
+                {saving ? (
+                  <span className="text-[#a8a29e]"> · 保存中…</span>
+                ) : saveMessage ? (
+                  <span className="text-[#57534e]"> · {saveMessage}</span>
+                ) : null}
               </p>
               <p className="font-mono text-xs text-[#78716c]">
                 rect: {selected.rect.left.toFixed(3)}, {selected.rect.top.toFixed(3)},{" "}
                 {selected.rect.width.toFixed(3)}×{selected.rect.height.toFixed(3)}
               </p>
-              {(selected.contextBefore || selected.contextAfter) && (
-                <p className="text-xs text-[#a8a29e]">
-                  …{selected.contextBefore}
-                  <span className="text-[#1c1917]">{selected.raw}</span>
-                  {selected.contextAfter}…
-                </p>
-              )}
             </div>
           ) : null}
         </section>
 
         <PdfViewer onWordSelect={handleWordSelect} />
+
+        {marks.length > 0 ? (
+          <section className="mt-8 space-y-3 border-t border-[#d6d3d1] pt-6">
+            <h2 className="text-lg font-medium">已保存标记</h2>
+            <ul className="space-y-2 text-sm text-[#57534e]">
+              {marks.slice(0, 20).map((m) => (
+                <li key={m.id} className="border-b border-[#e7e2d9] pb-2">
+                  <span className="font-medium text-[#1c1917]">{m.word}</span>
+                  <span className="text-[#a8a29e]">
+                    {" "}
+                    · #{m.id} · {m.fileName} · 第 {m.pageNumber} 页 · (
+                    {m.rectLeft.toFixed(3)}, {m.rectTop.toFixed(3)})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </main>
     </div>
   );
