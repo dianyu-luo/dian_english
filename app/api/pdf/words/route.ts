@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pdfWordMarks } from "@/lib/db/schema";
@@ -71,6 +71,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "缺少必要字段" }, { status: 400 });
   }
 
+  // 同一文件、同一单词且同一位置才视为重复；不同位置可分别保存
+  const [existing] = await db
+    .select()
+    .from(pdfWordMarks)
+    .where(
+      and(
+        eq(pdfWordMarks.fileName, fileName),
+        eq(pdfWordMarks.word, word),
+        eq(pdfWordMarks.pageNumber, pageNumber),
+        eq(pdfWordMarks.rectLeft, rect.left!),
+        eq(pdfWordMarks.rectTop, rect.top!),
+        eq(pdfWordMarks.rectWidth, rect.width!),
+        eq(pdfWordMarks.rectHeight, rect.height!),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    return NextResponse.json({ ok: true, item: existing, created: false });
+  }
+
   const [row] = await db
     .insert(pdfWordMarks)
     .values({
@@ -89,5 +110,5 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  return NextResponse.json({ ok: true, item: row });
+  return NextResponse.json({ ok: true, item: row, created: true });
 }

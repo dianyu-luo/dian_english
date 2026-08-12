@@ -79,8 +79,12 @@ export default function PdfPageClient() {
         if (!res.ok || !data.ok) {
           throw new Error(data.error ?? "保存失败");
         }
-        setSaveMessage(`已保存 #${data.item.id}`);
-        await loadMarks(info.fileName);
+        setSaveMessage(
+          data.created === false ? `已存在 #${data.item.id}` : `已保存 #${data.item.id}`,
+        );
+        if (data.created !== false) {
+          await loadMarks(info.fileName);
+        }
       } catch (err) {
         setSaveMessage(err instanceof Error ? err.message : "保存失败");
       } finally {
