@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { getSelectedWordInfo, type OnPdfWordSelect } from "./get-selected-word";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -12,7 +13,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 type PdfSource = File | string | null;
 
-export default function PdfViewer() {
+type PdfViewerProps = {
+  onWordSelect?: OnPdfWordSelect;
+};
+
+export default function PdfViewer({ onWordSelect }: PdfViewerProps) {
   const [file, setFile] = useState<PdfSource>(null);
   const [fileName, setFileName] = useState("");
   const [numPages, setNumPages] = useState(0);
@@ -23,6 +28,21 @@ export default function PdfViewer() {
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const onWordSelectRef = useRef(onWordSelect);
+  const pageNumberRef = useRef(pageNumber);
+  const fileNameRef = useRef(fileName);
+
+  useEffect(() => {
+    onWordSelectRef.current = onWordSelect;
+  }, [onWordSelect]);
+
+  useEffect(() => {
+    pageNumberRef.current = pageNumber;
+  }, [pageNumber]);
+
+  useEffect(() => {
+    fileNameRef.current = fileName;
+  }, [fileName]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -35,6 +55,32 @@ export default function PdfViewer() {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  const handleTextSelect = useCallback(() => {
+    const el = containerRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0) return;
+
+    const anchor = sel.anchorNode;
+    if (!anchor || !el.contains(anchor)) return;
+
+    const info = getSelectedWordInfo({
+      selection: sel,
+      pageNumber: pageNumberRef.current,
+      fileName: fileNameRef.current,
+    });
+    if (!info) return;
+
+    onWordSelectRef.current?.(info);
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    el.addEventListener("mouseup", handleTextSelect);
+    return () => el.removeEventListener("mouseup", handleTextSelect);
+  }, [handleTextSelect, file]);
 
   const openFile = useCallback((next: File | null) => {
     if (!next) return;
