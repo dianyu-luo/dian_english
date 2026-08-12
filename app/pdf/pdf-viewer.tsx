@@ -19,9 +19,26 @@ type RecentItem = {
   url: string;
 };
 
+export type PdfHighlightRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+/** 点击标记后跳转目标 */
+export type PdfJumpRequest = {
+  nonce: number;
+  fileName: string;
+  pageNumber: number;
+  word: string;
+  rect: PdfHighlightRect;
+};
+
 type PdfViewerProps = {
   onWordSelect?: OnPdfWordSelect;
   onRecentChange?: (item: RecentItem | null) => void;
+  jumpRequest?: PdfJumpRequest | null;
 };
 
 async function saveRecentPage(fileName: string, pageNumber: number) {
@@ -32,7 +49,18 @@ async function saveRecentPage(fileName: string, pageNumber: number) {
   });
 }
 
-export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerProps) {
+async function fetchRecentByFileName(fileName: string): Promise<RecentItem | null> {
+  const res = await fetch(`/api/pdf/recent?fileName=${encodeURIComponent(fileName)}`);
+  const data = await res.json();
+  if (!res.ok || !data.ok || !data.item) return null;
+  return data.item as RecentItem;
+}
+
+export default function PdfViewer({
+  onWordSelect,
+  onRecentChange,
+  jumpRequest,
+}: PdfViewerProps) {
   const [file, setFile] = useState<PdfSource>(null);
   const [fileName, setFileName] = useState("");
   const [numPages, setNumPages] = useState(0);
@@ -43,7 +71,11 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
   const [booting, setBooting] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [highlight, setHighlight] = useState<
+    (PdfHighlightRect & { word: string; pageNumber: number }) | null
+  >(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
@@ -51,6 +83,7 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
   const fileNameRef = useRef(fileName);
   const restorePageRef = useRef<number | null>(null);
   const skipPersistRef = useRef(true);
+  const highlightTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     onWordSelectRef.current = onWordSelect;
@@ -79,6 +112,20 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  const showHighlight = useCallback(
+    (rect: PdfHighlightRect, word: string, page: number) => {
+      if (highlightTimerRef.current != null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+      setHighlight({ ...rect, word, pageNumber: page });
+      highlightTimerRef.current = window.setTimeout(() => {
+        setHighlight(null);
+        highlightTimerRef.current = null;
+      }, 3500);
+    },
+    [],
+  );
 
   // 进入页面：恢复最近阅读的文件与页码
   useEffect(() => {
@@ -133,6 +180,49 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
     return () => window.clearTimeout(timer);
   }, [fileName, pageNumber, file]);
 
+  // 点击已保存标记：跳页并高亮
+  useEffect(() => {
+    if (!jumpRequest) return;
+
+    let cancelled = false;
+
+    (async () => {
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      try {
+        if (jumpRequest.fileName !== fileNameRef.current) {
+          const item = await fetchRecentByFileName(jumpRequest.fileName);
+          if (cancelled) return;
+          if (!item) {
+            setError(`找不到文件「${jumpRequest.fileName}」，请先重新打开该 PDF`);
+            return;
+          }
+          restorePageRef.current = jumpRequest.pageNumber;
+          skipPersistRef.current = true;
+          setFile(item.url);
+          setFileName(item.fileName);
+          setPageNumber(jumpRequest.pageNumber);
+          setNumPages(0);
+          setScale(1);
+          setError(null);
+          onRecentChangeRef.current?.(item);
+        } else {
+          skipPersistRef.current = true;
+          setPageNumber(jumpRequest.pageNumber);
+          setError(null);
+        }
+
+        showHighlight(jumpRequest.rect, jumpRequest.word, jumpRequest.pageNumber);
+      } catch {
+        if (!cancelled) setError("跳转失败");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jumpRequest, showHighlight]);
+
   const handleTextSelect = useCallback(() => {
     const el = containerRef.current;
     const sel = window.getSelection();
@@ -159,6 +249,14 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
     return () => el.removeEventListener("mouseup", handleTextSelect);
   }, [handleTextSelect, file]);
 
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current != null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+    };
+  }, []);
+
   const openFile = useCallback(async (next: File | null) => {
     if (!next) return;
     if (next.type !== "application/pdf" && !next.name.toLowerCase().endsWith(".pdf")) {
@@ -168,6 +266,7 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
 
     setUploading(true);
     setError(null);
+    setHighlight(null);
     try {
       const form = new FormData();
       form.append("file", next);
@@ -210,7 +309,7 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
   }, [containerWidth, scale]);
 
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 border border-[#e7e2d9] bg-[#faf8f4] px-3 py-2">
         <button
           type="button"
@@ -239,7 +338,10 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
           <button
             type="button"
             disabled={!file || pageNumber <= 1}
-            onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+            onClick={() => {
+              setHighlight(null);
+              setPageNumber((p) => Math.max(1, p - 1));
+            }}
             className="border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
             aria-label="上一页"
           >
@@ -251,7 +353,10 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
           <button
             type="button"
             disabled={!file || pageNumber >= numPages}
-            onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
+            onClick={() => {
+              setHighlight(null);
+              setPageNumber((p) => Math.min(numPages, p + 1));
+            }}
             className="border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
             aria-label="下一页"
           >
@@ -326,14 +431,27 @@ export default function PdfViewer({ onWordSelect, onRecentChange }: PdfViewerPro
               loading={<p className="py-16 text-sm text-[#78716c]">正在加载 PDF…</p>}
               error={<p className="py-16 text-sm text-[#b91c1c]">加载失败</p>}
             >
-              <Page
-                pageNumber={pageNumber}
-                width={pageWidth}
-                renderTextLayer
-                renderAnnotationLayer
-                className="shadow-sm"
-                loading={<p className="py-16 text-sm text-[#78716c]">渲染中…</p>}
-              />
+              <div className="relative inline-block shadow-sm">
+                <Page
+                  pageNumber={pageNumber}
+                  width={pageWidth}
+                  renderTextLayer
+                  renderAnnotationLayer
+                  loading={<p className="py-16 text-sm text-[#78716c]">渲染中…</p>}
+                />
+                {highlight && highlight.pageNumber === pageNumber ? (
+                  <div
+                    aria-label={`高亮 ${highlight.word}`}
+                    className="pointer-events-none absolute z-10 bg-[#fbbf24]/55 ring-2 ring-[#d97706] transition-opacity"
+                    style={{
+                      left: `${highlight.left * 100}%`,
+                      top: `${highlight.top * 100}%`,
+                      width: `${Math.max(highlight.width, 0.01) * 100}%`,
+                      height: `${Math.max(highlight.height, 0.008) * 100}%`,
+                    }}
+                  />
+                ) : null}
+              </div>
             </Document>
           </div>
         )}

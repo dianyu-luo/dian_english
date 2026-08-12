@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { PdfWordSelectInfo } from "./get-selected-word";
+import type { PdfJumpRequest } from "./pdf-viewer";
 
 const PdfViewer = dynamic(() => import("./pdf-viewer"), {
   ssr: false,
@@ -41,6 +42,7 @@ export default function PdfPageClient() {
   const [saving, setSaving] = useState(false);
   const [marks, setMarks] = useState<SavedMark[]>([]);
   const [recent, setRecent] = useState<RecentItem | null>(null);
+  const [jumpRequest, setJumpRequest] = useState<PdfJumpRequest | null>(null);
 
   const loadMarks = useCallback(async (fileName?: string) => {
     const qs = fileName ? `?fileName=${encodeURIComponent(fileName)}` : "";
@@ -94,6 +96,21 @@ export default function PdfPageClient() {
     [loadMarks],
   );
 
+  const handleMarkClick = useCallback((m: SavedMark) => {
+    setJumpRequest({
+      nonce: Date.now(),
+      fileName: m.fileName,
+      pageNumber: m.pageNumber,
+      word: m.word,
+      rect: {
+        left: m.rectLeft,
+        top: m.rectTop,
+        width: m.rectWidth,
+        height: m.rectHeight,
+      },
+    });
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
       <header className="border-b border-[#e7e2d9] bg-[#faf8f4]/px-6 py-4">
@@ -109,7 +126,7 @@ export default function PdfPageClient() {
         <section className="mb-6 space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">PDF 阅读</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            选中单词会写入数据库；阅读进度记入「最近阅读」，下次自动打开到对应页。
+            选中单词会写入数据库；点击下方标记可跳转到对应位置并高亮。
           </p>
           {recent ? (
             <p className="text-sm text-[#57534e]">
@@ -141,7 +158,11 @@ export default function PdfPageClient() {
           ) : null}
         </section>
 
-        <PdfViewer onWordSelect={handleWordSelect} onRecentChange={setRecent} />
+        <PdfViewer
+          onWordSelect={handleWordSelect}
+          onRecentChange={setRecent}
+          jumpRequest={jumpRequest}
+        />
 
         {marks.length > 0 ? (
           <section className="mt-8 space-y-3 border-t border-[#d6d3d1] pt-6">
@@ -149,12 +170,20 @@ export default function PdfPageClient() {
             <ul className="space-y-2 text-sm text-[#57534e]">
               {marks.slice(0, 20).map((m) => (
                 <li key={m.id} className="border-b border-[#e7e2d9] pb-2">
-                  <span className="font-medium text-[#1c1917]">{m.word}</span>
-                  <span className="text-[#a8a29e]">
-                    {" "}
-                    · #{m.id} · {m.fileName} · 第 {m.pageNumber} 页 · (
-                    {m.rectLeft.toFixed(3)}, {m.rectTop.toFixed(3)})
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleMarkClick(m)}
+                    className="w-full text-left transition-colors hover:text-[#1c1917]"
+                  >
+                    <span className="font-medium text-[#1c1917] underline-offset-2 hover:underline">
+                      {m.word}
+                    </span>
+                    <span className="text-[#a8a29e]">
+                      {" "}
+                      · #{m.id} · {m.fileName} · 第 {m.pageNumber} 页 · (
+                      {m.rectLeft.toFixed(3)}, {m.rectTop.toFixed(3)})
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>

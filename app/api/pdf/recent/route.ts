@@ -24,13 +24,21 @@ function serialize(row: typeof pdfRecentReads.$inferSelect) {
   };
 }
 
-/** 取最近一次阅读记录 */
-export async function GET() {
-  const [row] = await db
-    .select()
-    .from(pdfRecentReads)
-    .orderBy(desc(pdfRecentReads.updatedAt))
-    .limit(1);
+/** 取最近阅读：可按 fileName 查，否则返回最近一条 */
+export async function GET(request: Request) {
+  const fileName = new URL(request.url).searchParams.get("fileName")?.trim();
+
+  const [row] = fileName
+    ? await db
+        .select()
+        .from(pdfRecentReads)
+        .where(eq(pdfRecentReads.fileName, fileName))
+        .limit(1)
+    : await db
+        .select()
+        .from(pdfRecentReads)
+        .orderBy(desc(pdfRecentReads.updatedAt))
+        .limit(1);
 
   if (!row) {
     return NextResponse.json({ ok: true, item: null });
