@@ -74,6 +74,7 @@ export default function PdfViewer({
   const [highlight, setHighlight] = useState<
     (PdfHighlightRect & { word: string; pageNumber: number }) | null
   >(null);
+  const [pageInput, setPageInput] = useState("1");
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +96,7 @@ export default function PdfViewer({
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
+    setPageInput(String(pageNumber));
   }, [pageNumber]);
 
   useEffect(() => {
@@ -303,6 +305,19 @@ export default function PdfViewer({
     setError(null);
   }, []);
 
+  const jumpToPage = useCallback(() => {
+    if (!file || !numPages) return;
+    const n = Number.parseInt(pageInput, 10);
+    if (!Number.isFinite(n)) {
+      setPageInput(String(pageNumber));
+      return;
+    }
+    const next = Math.min(Math.max(1, n), numPages);
+    setHighlight(null);
+    setPageNumber(next);
+    setPageInput(String(next));
+  }, [file, numPages, pageInput, pageNumber]);
+
   const pageWidth = useMemo(() => {
     if (!containerWidth) return undefined;
     return Math.min(containerWidth - 32, 900) * scale;
@@ -347,9 +362,27 @@ export default function PdfViewer({
           >
             ‹
           </button>
-          <span className="min-w-20 text-center text-sm tabular-nums text-[#57534e]">
-            {numPages ? `${pageNumber} / ${numPages}` : "—"}
-          </span>
+          <label className="flex items-center gap-1 text-sm tabular-nums text-[#57534e]">
+            <input
+              type="number"
+              min={1}
+              max={numPages || undefined}
+              value={pageInput}
+              disabled={!file || !numPages}
+              onChange={(e) => setPageInput(e.target.value)}
+              onBlur={jumpToPage}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  jumpToPage();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              className="w-14 border border-[#d6d3d1] bg-white px-1.5 py-1 text-center disabled:opacity-40"
+              aria-label="跳转到页码"
+            />
+            <span>/ {numPages || "—"}</span>
+          </label>
           <button
             type="button"
             disabled={!file || pageNumber >= numPages}
