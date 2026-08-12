@@ -62,6 +62,15 @@ export default function PdfPageClient() {
       setSelected(info);
       setSaving(true);
       setSaveMessage("");
+
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(info.word);
+        copied = true;
+      } catch {
+        // 剪贴板权限不可用时忽略，仍继续保存
+      }
+
       try {
         const res = await fetch("/api/pdf/words", {
           method: "POST",
@@ -81,9 +90,9 @@ export default function PdfPageClient() {
         if (!res.ok || !data.ok) {
           throw new Error(data.error ?? "保存失败");
         }
-        setSaveMessage(
-          data.created === false ? `已存在 #${data.item.id}` : `已保存 #${data.item.id}`,
-        );
+        const savePart =
+          data.created === false ? `已存在 #${data.item.id}` : `已保存 #${data.item.id}`;
+        setSaveMessage(copied ? `已复制 · ${savePart}` : savePart);
         if (data.created !== false) {
           await loadMarks(info.fileName);
         }
