@@ -82,6 +82,7 @@ export default function PdfViewer({
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
   const pageNumberRef = useRef(pageNumber);
+  const numPagesRef = useRef(numPages);
   const fileNameRef = useRef(fileName);
   const restorePageRef = useRef<number | null>(null);
   const skipPersistRef = useRef(true);
@@ -109,6 +110,10 @@ export default function PdfViewer({
     pageNumberRef.current = pageNumber;
     setPageInput(String(pageNumber));
   }, [pageNumber]);
+
+  useEffect(() => {
+    numPagesRef.current = numPages;
+  }, [numPages]);
 
   useEffect(() => {
     fileNameRef.current = fileName;
@@ -337,6 +342,15 @@ export default function PdfViewer({
     setPageNumber((p) => Math.min(numPages, p + 1));
   }, [numPages]);
 
+  // react-pdf 把 onItemClick 封进 useRef，只会拿到首次回调；必须用稳定函数 + ref 读最新页数
+  const onItemClick = useCallback(({ pageNumber: target }: { pageNumber: number }) => {
+    if (!Number.isFinite(target)) return;
+    const total = numPagesRef.current;
+    const next = total > 0 ? Math.min(Math.max(1, target), total) : Math.max(1, target);
+    setHighlight(null);
+    setPageNumber(next);
+  }, []);
+
   const pageWidth = useMemo(() => {
     if (!containerWidth) return undefined;
     // 两侧窄条翻页按钮各约 40px，再留一点边距
@@ -515,6 +529,7 @@ export default function PdfViewer({
               file={file}
               onLoadSuccess={onDocumentLoadSuccess}
               onLoadError={() => setError("无法加载该 PDF，请换一个文件试试")}
+              onItemClick={onItemClick}
               loading={<p className="py-16 text-sm text-[#78716c]">正在加载 PDF…</p>}
               error={<p className="py-16 text-sm text-[#b91c1c]">加载失败</p>}
             >
