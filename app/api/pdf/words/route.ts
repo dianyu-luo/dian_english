@@ -68,7 +68,8 @@ export async function POST(request: Request) {
   const fileName = body.fileName?.trim();
   const word = body.word?.trim();
   const type = body.type?.trim();
-  const note = typeof body.note === "string" ? body.note : "";
+  const note =
+    typeof body.note === "string" ? body.note : undefined;
   const pageNumber = body.pageNumber;
   const rect = body.rect;
   const locator = body.locator?.trim();
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
     const [row] = await db
       .update(pdfWordMarks)
       .set({
-        note: typeof body.note === "string" ? note : existing.note,
+        note: note !== undefined ? note : existing.note,
         contextBefore: body.contextBefore ?? existing.contextBefore,
         contextAfter: body.contextAfter ?? existing.contextAfter,
         locator,
@@ -126,7 +127,7 @@ export async function POST(request: Request) {
       fileName,
       word,
       type,
-      note,
+      note: note ?? "",
       pageNumber,
       rectLeft: rect.left,
       rectTop: rect.top,

@@ -80,8 +80,12 @@ export default function PdfPageClient() {
       // 剪贴板权限不可用时忽略
     }
 
-    const kind = info.type === "sentence" ? "句子" : "单词";
-    setSaveMessage(copied ? `已复制${kind}` : "复制失败");
+    if (info.type === "word") {
+      setSaveMessage(copied ? "已复制 · 单词已入库" : "单词已入库");
+      return;
+    }
+
+    setSaveMessage(copied ? "已复制句子" : "复制失败");
   }, []);
 
   const handleMarkClick = useCallback((m: SavedMark) => {
@@ -114,7 +118,7 @@ export default function PdfPageClient() {
         <section className="mb-6 space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">PDF 阅读</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            选中后弹出笔记菜单；有笔记会高亮。点击下方标记可跳转到对应位置并高亮。
+            选中单词会自动入库；选中后可点「笔记」写备注，有笔记会高亮。点击下方标记可跳转。
           </p>
           {recent ? (
             <p className="text-sm text-[#57534e]">

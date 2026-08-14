@@ -566,6 +566,35 @@ export default function PdfViewer({
 
     onWordSelectRef.current?.(info);
 
+    // 单词选中后自动入库（不覆盖已有 note）
+    if (info.type === "word" && info.fileName) {
+      void (async () => {
+        try {
+          const res = await fetch("/api/pdf/words", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fileName: info.fileName,
+              word: info.word,
+              type: "word",
+              pageNumber: info.pageNumber,
+              rect: info.rect,
+              contextBefore: info.contextBefore,
+              contextAfter: info.contextAfter,
+              locator: info.locator,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) return;
+          const item = data.item as PdfWordMark;
+          setWordMarks((prev) => [item, ...prev.filter((m) => m.id !== item.id)]);
+          onWordMarksChangeRef.current?.();
+        } catch {
+          // 自动入库失败时不打断选区菜单
+        }
+      })();
+    }
+
     const menuW = 88;
     const menuH = 40;
     const rangeBox = sel.getRangeAt(0).getBoundingClientRect();
@@ -2058,7 +2087,7 @@ export default function PdfViewer({
             className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
             onClick={() => void handleCreateWordNote()}
           >
-            笔记
+            添加笔记
           </button>
         </div>
       ) : null}
