@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { ChatMarkdown } from "./chat-markdown";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 
 export type ChatMessage = {
@@ -263,16 +264,17 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[92%] whitespace-pre-wrap px-3 py-2 text-sm leading-6 ${
+              className={`max-w-[92%] px-3 py-2 text-sm leading-6 ${
                 m.role === "user"
-                  ? "bg-[#1c1917] text-[#faf8f4]"
+                  ? "whitespace-pre-wrap bg-[#1c1917] text-[#faf8f4]"
                   : "border border-[#e7e2d9] bg-white text-[#292524]"
               }`}
             >
-              {m.content || (m.streaming ? "思考中…" : "")}
-              {m.streaming && m.content ? (
-                <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-[#a8a29e] align-middle" />
-              ) : null}
+              {m.role === "assistant" ? (
+                <ChatMarkdown content={m.content} streaming={m.streaming} />
+              ) : (
+                m.content
+              )}
             </div>
           </div>
         ))}
