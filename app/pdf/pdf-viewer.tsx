@@ -598,9 +598,20 @@ export default function PdfViewer({
     const menuW = 88;
     const menuH = 40;
     const rangeBox = sel.getRangeAt(0).getBoundingClientRect();
-    const preferX = Number.isFinite(rangeBox.left) && rangeBox.width > 0 ? rangeBox.left : e.clientX;
-    const preferY =
-      Number.isFinite(rangeBox.bottom) && rangeBox.height > 0 ? rangeBox.bottom + 6 : e.clientY + 6;
+    const hasRange =
+      Number.isFinite(rangeBox.left) &&
+      Number.isFinite(rangeBox.bottom) &&
+      rangeBox.width > 0 &&
+      rangeBox.height > 0;
+
+    let preferX: number;
+    let preferY: number;
+      {
+      // 句子：出现在鼠标附近
+      preferX = e.clientX + 8;
+      preferY = e.clientY + 8;
+    }
+
     const x = Math.min(Math.max(8, preferX), window.innerWidth - menuW - 8);
     const y = Math.min(Math.max(8, preferY), window.innerHeight - menuH - 8);
 
@@ -1975,6 +1986,12 @@ export default function PdfViewer({
                     <textarea
                       value={pinDraft}
                       onChange={(e) => setPinDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          if (!pinSaving) void savePinContent();
+                        }
+                      }}
                       rows={3}
                       placeholder={activePin.kind === "question" ? "输入问题…" : "输入笔记…"}
                       className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
@@ -2007,6 +2024,7 @@ export default function PdfViewer({
                           className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
                         >
                           {pinSaving ? "保存中…" : "保存"}
+                          <span className="ml-1 text-[10px] font-normal text-[#a8a29e]">⌃↵</span>
                         </button>
                       </div>
                     </div>
@@ -2034,6 +2052,12 @@ export default function PdfViewer({
                     <textarea
                       value={wordMarkDraft}
                       onChange={(e) => setWordMarkDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          if (!wordMarkSaving) void saveWordMarkNote();
+                        }
+                      }}
                       rows={3}
                       placeholder="输入笔记…"
                       className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
@@ -2063,6 +2087,7 @@ export default function PdfViewer({
                           className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
                         >
                           {wordMarkSaving ? "保存中…" : "保存"}
+                          <span className="ml-1 text-[10px] font-normal text-[#a8a29e]">⌃↵</span>
                         </button>
                       </div>
                     </div>
