@@ -71,6 +71,44 @@ function round4(n: number) {
   return Math.round(n * 10000) / 10000;
 }
 
+function AnnotateArrowIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+      <path
+        d="M3.5 14.5 14.5 3.5M14.5 3.5H7.5M14.5 3.5V10.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AnnotateCircleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+      <circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function AnnotateRectIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+      <rect
+        x="3.5"
+        y="4.5"
+        width="11"
+        height="9"
+        rx="0.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
 async function saveRecentPage(fileName: string, pageNumber: number) {
   await fetch("/api/pdf/recent", {
     method: "POST",
@@ -106,6 +144,7 @@ export default function PdfViewer({
   >(null);
   const [pageInput, setPageInput] = useState("1");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [annotateSubmenuOpen, setAnnotateSubmenuOpen] = useState(false);
   const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
   const [questions, setQuestions] = useState<PdfQuestion[]>([]);
   const [activeQuestionId, setActiveQuestionId] = useState<number | null>(null);
@@ -426,7 +465,10 @@ export default function PdfViewer({
     }
   }, [centerHighlight]);
 
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setAnnotateSubmenuOpen(false);
+  }, []);
   const closeMarkerMenu = useCallback(() => setMarkerMenu(null), []);
 
   const closeQuestionEditor = useCallback(() => {
@@ -481,6 +523,7 @@ export default function PdfViewer({
       if (!rect) return;
       e.preventDefault();
       closeMarkerMenu();
+      setAnnotateSubmenuOpen(false);
       const menuW = 140;
       const menuH = 120;
       const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
@@ -787,6 +830,17 @@ export default function PdfViewer({
     { id: "help", label: "帮助" },
   ] as const;
 
+  const annotateSubmenuItems = [
+    { id: "arrow", label: "箭头", Icon: AnnotateArrowIcon },
+    { id: "circle", label: "圆形", Icon: AnnotateCircleIcon },
+    { id: "rect", label: "矩形", Icon: AnnotateRectIcon },
+  ] as const;
+
+  const annotateSubmenuOnLeft = useMemo(() => {
+    if (!contextMenu || typeof window === "undefined") return false;
+    return contextMenu.x + 140 + 120 > window.innerWidth - 8;
+  }, [contextMenu]);
+
   const pageQuestions = useMemo(
     () => questions.filter((q) => q.pageNumber === pageNumber),
     [questions, pageNumber],
@@ -1068,23 +1122,74 @@ export default function PdfViewer({
           className="fixed z-50 min-w-[8.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {contextMenuItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-              onClick={() => {
-                if (item.id === "question") {
-                  void handleAddQuestion();
-                  return;
-                }
-                closeContextMenu();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+          {contextMenuItems.map((item) =>
+            item.id === "annotate" ? (
+              <div
+                key={item.id}
+                className="relative"
+                onMouseEnter={() => setAnnotateSubmenuOpen(true)}
+                onMouseLeave={() => setAnnotateSubmenuOpen(false)}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  aria-expanded={annotateSubmenuOpen}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+                  onClick={() => setAnnotateSubmenuOpen((open) => !open)}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-[#a8a29e]" aria-hidden>
+                    ›
+                  </span>
+                </button>
+                {annotateSubmenuOpen ? (
+                  <div
+                    role="menu"
+                    className={`absolute top-0 z-50 flex border border-[#d6d3d1] bg-[#faf8f4] p-0.5 shadow-md ${
+                      annotateSubmenuOnLeft ? "right-full mr-0.5" : "left-full ml-0.5"
+                    }`}
+                  >
+                    {annotateSubmenuItems.map((sub) => {
+                      const Icon = sub.Icon;
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          role="menuitem"
+                          title={sub.label}
+                          aria-label={sub.label}
+                          className="flex h-8 w-8 items-center justify-center text-[#1c1917] hover:bg-[#efebe4]"
+                          onClick={() => {
+                            // 标注工具逻辑后续接入
+                            closeContextMenu();
+                          }}
+                        >
+                          <Icon />
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+                onClick={() => {
+                  if (item.id === "question") {
+                    void handleAddQuestion();
+                    return;
+                  }
+                  closeContextMenu();
+                }}
+              >
+                {item.label}
+              </button>
+            ),
+          )}
         </div>
       ) : null}
 
