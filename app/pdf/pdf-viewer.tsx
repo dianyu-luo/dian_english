@@ -65,10 +65,34 @@ type MarkerMenuState = {
   question: PdfQuestion;
 };
 
+type PdfAnnotation = {
+  id: number;
+  fileName: string;
+  pageNumber: number;
+  type: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  strokeWidth: number;
+};
+
+type DrawTool = "arrow" | null;
+
+type NormPoint = { x: number; y: number };
+
 const QUESTION_MARKER_PX = 28;
+const ARROW_COLOR = "#dc2626";
+const ARROW_STROKE_WIDTH = 2.5;
+const MIN_ARROW_DRAG_PX = 6;
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
+}
+
+function clamp01(n: number) {
+  return Math.min(1, Math.max(0, n));
 }
 
 function AnnotateArrowIcon() {
@@ -106,6 +130,37 @@ function AnnotateRectIcon() {
         strokeWidth="1.6"
       />
     </svg>
+  );
+}
+
+function ArrowMarkup({
+  x1,
+  y1,
+  x2,
+  y2,
+  color,
+  strokeWidth,
+  markerId,
+}: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  strokeWidth: number;
+  markerId: string;
+}) {
+  return (
+    <line
+      x1={`${x1 * 100}%`}
+      y1={`${y1 * 100}%`}
+      x2={`${x2 * 100}%`}
+      y2={`${y2 * 100}%`}
+      stroke={color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      markerEnd={`url(#${markerId})`}
+    />
   );
 }
 
@@ -151,6 +206,14 @@ export default function PdfViewer({
   const [questionDraft, setQuestionDraft] = useState("");
   const [questionSaving, setQuestionSaving] = useState(false);
   const [draggingQuestionId, setDraggingQuestionId] = useState<number | null>(null);
+  const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
+  const [drawTool, setDrawTool] = useState<DrawTool>(null);
+  const [draftArrow, setDraftArrow] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -158,6 +221,12 @@ export default function PdfViewer({
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const markerMenuRef = useRef<HTMLDivElement>(null);
   const questionEditorRef = useRef<HTMLDivElement>(null);
+  const pageFrameRef = useRef<HTMLDivElement>(null);
+  const arrowStrokeRef = useRef<{
+    x1: number;
+    y1: number;
+    pointerId: number;
+  } | null>(null);
   const questionDragRef = useRef<{
     id: number;
     startClientX: number;
@@ -492,15 +561,50 @@ export default function PdfViewer({
     }
   }, []);
 
+  const loadAnnotations = useCallback(async (name: string) => {
+    if (!name) {
+      setAnnotations([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/pdf/annotations?fileName=${encodeURIComponent(name)}`);
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setAnnotations(data.items as PdfAnnotation[]);
+      }
+    } catch {
+      // 加载失败时保留现有列表
+    }
+  }, []);
+
   useEffect(() => {
     void loadQuestions(fileName);
+    void loadAnnotations(fileName);
     closeQuestionEditor();
-  }, [fileName, loadQuestions, closeQuestionEditor]);
+    setDrawTool(null);
+    setDraftArrow(null);
+    arrowStrokeRef.current = null;
+  }, [fileName, loadQuestions, loadAnnotations, closeQuestionEditor]);
+
+  const getPageNormPoint = useCallback((clientX: number, clientY: number): NormPoint | null => {
+    const pageEl =
+      pageFrameRef.current?.querySelector(".react-pdf__Page") ??
+      (containerRef.current?.querySelector(".react-pdf__Page") as Element | null);
+    if (!pageEl) return null;
+    const box = (pageEl as HTMLElement).getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) return null;
+    return {
+      x: round4(clamp01((clientX - box.left) / box.width)),
+      y: round4(clamp01((clientY - box.top) / box.height)),
+    };
+  }, []);
 
   const getPageNormRect = useCallback((clientX: number, clientY: number): PdfHighlightRect | null => {
-    const pageEl = containerRef.current?.querySelector(".react-pdf__Page") as HTMLElement | null;
+    const pageEl =
+      pageFrameRef.current?.querySelector(".react-pdf__Page") ??
+      (containerRef.current?.querySelector(".react-pdf__Page") as Element | null);
     if (!pageEl) return null;
-    const box = pageEl.getBoundingClientRect();
+    const box = (pageEl as HTMLElement).getBoundingClientRect();
     if (box.width <= 0 || box.height <= 0) return null;
 
     const width = QUESTION_MARKER_PX / box.width;
@@ -516,6 +620,111 @@ export default function PdfViewer({
     };
   }, []);
 
+  const startArrowTool = useCallback(() => {
+    closeContextMenu();
+    closeQuestionEditor();
+    closeMarkerMenu();
+    setDraftArrow(null);
+    arrowStrokeRef.current = null;
+    setDrawTool("arrow");
+  }, [closeContextMenu, closeQuestionEditor, closeMarkerMenu]);
+
+  const cancelDrawTool = useCallback(() => {
+    setDrawTool(null);
+    setDraftArrow(null);
+    arrowStrokeRef.current = null;
+  }, []);
+
+  const saveArrowAnnotation = useCallback(
+    async (stroke: { x1: number; y1: number; x2: number; y2: number }) => {
+      if (!fileName) return;
+      try {
+        const res = await fetch("/api/pdf/annotations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName,
+            pageNumber: pageNumberRef.current,
+            type: "arrow",
+            ...stroke,
+            color: ARROW_COLOR,
+            strokeWidth: ARROW_STROKE_WIDTH,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "保存箭头失败");
+        }
+        const item = data.item as PdfAnnotation;
+        setAnnotations((prev) => [item, ...prev.filter((a) => a.id !== item.id)]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "保存箭头失败");
+      }
+    },
+    [fileName],
+  );
+
+  const onArrowPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0 || drawTool !== "arrow") return;
+      const point = getPageNormPoint(e.clientX, e.clientY);
+      if (!point) return;
+      e.preventDefault();
+      e.stopPropagation();
+      arrowStrokeRef.current = {
+        x1: point.x,
+        y1: point.y,
+        pointerId: e.pointerId,
+      };
+      setDraftArrow({ x1: point.x, y1: point.y, x2: point.x, y2: point.y });
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [drawTool, getPageNormPoint],
+  );
+
+  const onArrowPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const stroke = arrowStrokeRef.current;
+      if (!stroke || stroke.pointerId !== e.pointerId) return;
+      const point = getPageNormPoint(e.clientX, e.clientY);
+      if (!point) return;
+      setDraftArrow({ x1: stroke.x1, y1: stroke.y1, x2: point.x, y2: point.y });
+    },
+    [getPageNormPoint],
+  );
+
+  const onArrowPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const stroke = arrowStrokeRef.current;
+      if (!stroke || stroke.pointerId !== e.pointerId) return;
+
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+
+      const point = getPageNormPoint(e.clientX, e.clientY) ?? {
+        x: draftArrow?.x2 ?? stroke.x1,
+        y: draftArrow?.y2 ?? stroke.y1,
+      };
+      arrowStrokeRef.current = null;
+      setDraftArrow(null);
+
+      const pageEl =
+        pageFrameRef.current?.querySelector(".react-pdf__Page") as HTMLElement | null;
+      const box = pageEl?.getBoundingClientRect();
+      const dxPx = box ? Math.abs(point.x - stroke.x1) * box.width : 0;
+      const dyPx = box ? Math.abs(point.y - stroke.y1) * box.height : 0;
+      if (Math.hypot(dxPx, dyPx) < MIN_ARROW_DRAG_PX) return;
+
+      void saveArrowAnnotation({
+        x1: stroke.x1,
+        y1: stroke.y1,
+        x2: point.x,
+        y2: point.y,
+      });
+    },
+    [getPageNormPoint, draftArrow, saveArrowAnnotation],
+  );
   const onPdfContextMenu = useCallback(
     (e: MouseEvent) => {
       if (!file || booting) return;
@@ -822,7 +1031,18 @@ export default function PdfViewer({
     closeContextMenu();
     closeMarkerMenu();
     closeQuestionEditor();
+    setDraftArrow(null);
+    arrowStrokeRef.current = null;
   }, [pageNumber, closeContextMenu, closeMarkerMenu, closeQuestionEditor]);
+
+  useEffect(() => {
+    if (!drawTool) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancelDrawTool();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [drawTool, cancelDrawTool]);
 
   const contextMenuItems = [
     { id: "annotate", label: "标注" },
@@ -844,6 +1064,11 @@ export default function PdfViewer({
   const pageQuestions = useMemo(
     () => questions.filter((q) => q.pageNumber === pageNumber),
     [questions, pageNumber],
+  );
+
+  const pageArrows = useMemo(
+    () => annotations.filter((a) => a.pageNumber === pageNumber && a.type === "arrow"),
+    [annotations, pageNumber],
   );
 
   const activeQuestion = useMemo(
@@ -963,8 +1188,13 @@ export default function PdfViewer({
         }}
         className={`relative min-h-[70vh] border border-[#e7e2d9] bg-[#efebe4] ${
           dragging ? "outline outline-2 outline-[#a8a29e]" : ""
-        }`}
+        } ${drawTool === "arrow" ? "outline outline-2 outline-[#dc2626]/60" : ""}`}
       >
+        {drawTool === "arrow" ? (
+          <div className="absolute top-2 left-1/2 z-40 -translate-x-1/2 border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-xs text-[#b91c1c] shadow-sm">
+            绘制箭头：按住拖动 · Esc 取消
+          </div>
+        ) : null}
         {file && !booting ? (
           <>
             <button
@@ -1011,7 +1241,7 @@ export default function PdfViewer({
               loading={<p className="py-16 text-sm text-[#78716c]">正在加载 PDF…</p>}
               error={<p className="py-16 text-sm text-[#b91c1c]">加载失败</p>}
             >
-              <div className="relative inline-block shadow-sm">
+              <div ref={pageFrameRef} className="relative inline-block shadow-sm">
                 <Page
                   pageNumber={pageNumber}
                   width={pageWidth}
@@ -1020,6 +1250,60 @@ export default function PdfViewer({
                   onRenderSuccess={onPageRenderSuccess}
                   loading={<p className="py-16 text-sm text-[#78716c]">渲染中…</p>}
                 />
+                <svg
+                  className="pointer-events-none absolute inset-0 z-[25] h-full w-full overflow-visible"
+                  aria-hidden
+                >
+                  <defs>
+                    <marker
+                      id="pdf-arrow-head"
+                      markerWidth="8"
+                      markerHeight="8"
+                      refX="7"
+                      refY="4"
+                      orient="auto"
+                      markerUnits="strokeWidth"
+                    >
+                      <path d="M0,0 L8,4 L0,8 Z" fill={ARROW_COLOR} />
+                    </marker>
+                  </defs>
+                  {pageArrows.map((a) => (
+                    <ArrowMarkup
+                      key={a.id}
+                      x1={a.x1}
+                      y1={a.y1}
+                      x2={a.x2}
+                      y2={a.y2}
+                      color={a.color || ARROW_COLOR}
+                      strokeWidth={a.strokeWidth || ARROW_STROKE_WIDTH}
+                      markerId="pdf-arrow-head"
+                    />
+                  ))}
+                  {draftArrow ? (
+                    <ArrowMarkup
+                      x1={draftArrow.x1}
+                      y1={draftArrow.y1}
+                      x2={draftArrow.x2}
+                      y2={draftArrow.y2}
+                      color={ARROW_COLOR}
+                      strokeWidth={ARROW_STROKE_WIDTH}
+                      markerId="pdf-arrow-head"
+                    />
+                  ) : null}
+                </svg>
+                {drawTool === "arrow" ? (
+                  <div
+                    className="absolute inset-0 z-[26] cursor-crosshair touch-none"
+                    onPointerDown={onArrowPointerDown}
+                    onPointerMove={onArrowPointerMove}
+                    onPointerUp={onArrowPointerUp}
+                    onPointerCancel={onArrowPointerUp}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      cancelDrawTool();
+                    }}
+                  />
+                ) : null}
                 {highlight && highlight.pageNumber === pageNumber ? (
                   <div
                     ref={highlightRef}
@@ -1161,7 +1445,10 @@ export default function PdfViewer({
                           aria-label={sub.label}
                           className="flex h-8 w-8 items-center justify-center text-[#1c1917] hover:bg-[#efebe4]"
                           onClick={() => {
-                            // 标注工具逻辑后续接入
+                            if (sub.id === "arrow") {
+                              startArrowTool();
+                              return;
+                            }
                             closeContextMenu();
                           }}
                         >
