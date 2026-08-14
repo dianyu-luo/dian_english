@@ -41,7 +41,7 @@ type PdfViewerProps = {
   jumpRequest?: PdfJumpRequest | null;
 };
 
-type PdfQuestion = {
+type PdfPin = {
   id: number;
   fileName: string;
   pageNumber: number;
@@ -51,6 +51,8 @@ type PdfQuestion = {
   rectHeight: number;
   content: string;
 };
+
+type PinKind = "question" | "note";
 
 type ContextMenuState = {
   x: number;
@@ -73,7 +75,8 @@ type PdfAnnotation = {
 };
 
 type MarkerMenuState =
-  | { x: number; y: number; kind: "question"; question: PdfQuestion }
+  | { x: number; y: number; kind: "question"; pin: PdfPin }
+  | { x: number; y: number; kind: "note"; pin: PdfPin }
   | { x: number; y: number; kind: "arrow"; annotation: PdfAnnotation };
 
 type DrawTool = "arrow" | null;
@@ -83,6 +86,10 @@ type AnnotateToolId = "arrow" | "circle" | "rect";
 type NormPoint = { x: number; y: number };
 
 const QUESTION_MARKER_PX = 28;
+const PIN_API: Record<PinKind, string> = {
+  question: "/api/pdf/questions",
+  note: "/api/pdf/notes",
+};
 const ARROW_COLOR = "#dc2626";
 const ARROW_STROKE_WIDTH = 2.5;
 const MIN_ARROW_DRAG_PX = 6;
@@ -147,6 +154,28 @@ function AnnotateRectIcon() {
         rx="0.5"
         stroke="currentColor"
         strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function NoteMarkerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M3 1.75h7.25L13 4.5v9.75H3V1.75Z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+        fill="currentColor"
+        fillOpacity="0.12"
+      />
+      <path d="M10.25 1.75V4.5H13" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+      <path
+        d="M5.25 7h5.5M5.25 9.5h5.5M5.25 12h3.5"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -274,11 +303,12 @@ export default function PdfViewer({
   const [annotateSubmenuOpen, setAnnotateSubmenuOpen] = useState(false);
   const [lastAnnotateTool, setLastAnnotateTool] = useState<AnnotateToolId | null>(null);
   const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
-  const [questions, setQuestions] = useState<PdfQuestion[]>([]);
-  const [activeQuestionId, setActiveQuestionId] = useState<number | null>(null);
-  const [questionDraft, setQuestionDraft] = useState("");
-  const [questionSaving, setQuestionSaving] = useState(false);
-  const [draggingQuestionId, setDraggingQuestionId] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<PdfPin[]>([]);
+  const [notes, setNotes] = useState<PdfPin[]>([]);
+  const [activePin, setActivePin] = useState<{ kind: PinKind; id: number } | null>(null);
+  const [pinDraft, setPinDraft] = useState("");
+  const [pinSaving, setPinSaving] = useState(false);
+  const [draggingPin, setDraggingPin] = useState<{ kind: PinKind; id: number } | null>(null);
   const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
   const [drawTool, setDrawTool] = useState<DrawTool>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | null>(null);
@@ -294,14 +324,15 @@ export default function PdfViewer({
   const inputRef = useRef<HTMLInputElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const markerMenuRef = useRef<HTMLDivElement>(null);
-  const questionEditorRef = useRef<HTMLDivElement>(null);
+  const pinEditorRef = useRef<HTMLDivElement>(null);
   const pageFrameRef = useRef<HTMLDivElement>(null);
   const arrowStrokeRef = useRef<{
     x1: number;
     y1: number;
     pointerId: number;
   } | null>(null);
-  const questionDragRef = useRef<{
+  const pinDragRef = useRef<{
+    kind: PinKind;
     id: number;
     startClientX: number;
     startClientY: number;
@@ -618,26 +649,31 @@ export default function PdfViewer({
   }, []);
   const closeMarkerMenu = useCallback(() => setMarkerMenu(null), []);
 
-  const closeQuestionEditor = useCallback(() => {
-    setActiveQuestionId(null);
-    setQuestionDraft("");
+  const closePinEditor = useCallback(() => {
+    setActivePin(null);
+    setPinDraft("");
   }, []);
 
-  const loadQuestions = useCallback(async (name: string) => {
+  const updatePins = useCallback((kind: PinKind, updater: (prev: PdfPin[]) => PdfPin[]) => {
+    if (kind === "question") setQuestions(updater);
+    else setNotes(updater);
+  }, []);
+
+  const loadPins = useCallback(async (kind: PinKind, name: string) => {
     if (!name) {
-      setQuestions([]);
+      updatePins(kind, () => []);
       return;
     }
     try {
-      const res = await fetch(`/api/pdf/questions?fileName=${encodeURIComponent(name)}`);
+      const res = await fetch(`${PIN_API[kind]}?fileName=${encodeURIComponent(name)}`);
       const data = await res.json();
       if (res.ok && data.ok) {
-        setQuestions(data.items as PdfQuestion[]);
+        updatePins(kind, () => data.items as PdfPin[]);
       }
     } catch {
       // 加载失败时保留现有列表
     }
-  }, []);
+  }, [updatePins]);
 
   const loadAnnotations = useCallback(async (name: string) => {
     if (!name) {
@@ -656,14 +692,15 @@ export default function PdfViewer({
   }, []);
 
   useEffect(() => {
-    void loadQuestions(fileName);
+    void loadPins("question", fileName);
+    void loadPins("note", fileName);
     void loadAnnotations(fileName);
-    closeQuestionEditor();
+    closePinEditor();
     setDrawTool(null);
     setDraftArrow(null);
     setSelectedAnnotationId(null);
     arrowStrokeRef.current = null;
-  }, [fileName, loadQuestions, loadAnnotations, closeQuestionEditor]);
+  }, [fileName, loadPins, loadAnnotations, closePinEditor]);
 
   const getPageNormPoint = useCallback((clientX: number, clientY: number): NormPoint | null => {
     const pageEl =
@@ -701,13 +738,13 @@ export default function PdfViewer({
 
   const startArrowTool = useCallback(() => {
     closeContextMenu();
-    closeQuestionEditor();
+    closePinEditor();
     closeMarkerMenu();
     setSelectedAnnotationId(null);
     setDraftArrow(null);
     arrowStrokeRef.current = null;
     setDrawTool("arrow");
-  }, [closeContextMenu, closeQuestionEditor, closeMarkerMenu]);
+  }, [closeContextMenu, closePinEditor, closeMarkerMenu]);
 
   const selectAnnotateTool = useCallback(
     (tool: AnnotateToolId) => {
@@ -842,11 +879,16 @@ export default function PdfViewer({
   );
 
   const openMarkerMenu = useCallback(
-    (e: MouseEvent, target: { kind: "question"; question: PdfQuestion } | { kind: "arrow"; annotation: PdfAnnotation }) => {
+    (
+      e: MouseEvent,
+      target:
+        | { kind: PinKind; pin: PdfPin }
+        | { kind: "arrow"; annotation: PdfAnnotation },
+    ) => {
       e.preventDefault();
       e.stopPropagation();
       closeContextMenu();
-      closeQuestionEditor();
+      closePinEditor();
       const menuW = 120;
       const menuH = 48;
       const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
@@ -857,7 +899,7 @@ export default function PdfViewer({
         ...target,
       });
     },
-    [closeContextMenu, closeQuestionEditor],
+    [closeContextMenu, closePinEditor],
   );
 
   const deleteAnnotation = useCallback(async (a: PdfAnnotation) => {
@@ -875,201 +917,216 @@ export default function PdfViewer({
     }
   }, [closeMarkerMenu]);
 
-  const handleAddQuestion = useCallback(async () => {
-    if (!contextMenu || !fileName) {
-      closeContextMenu();
-      return;
-    }
-    const { pageNumber: targetPage, rect } = contextMenu;
-    closeContextMenu();
-    try {
-      const res = await fetch("/api/pdf/questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName,
-          pageNumber: targetPage,
-          rect,
-          content: "",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error ?? "创建问题失败");
+  const handleAddPin = useCallback(
+    async (kind: PinKind) => {
+      if (!contextMenu || !fileName) {
+        closeContextMenu();
+        return;
       }
-      const item = data.item as PdfQuestion;
-      setQuestions((prev) => [item, ...prev.filter((q) => q.id !== item.id)]);
-      setActiveQuestionId(item.id);
-      setQuestionDraft(item.content ?? "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "创建问题失败");
-    }
-  }, [contextMenu, fileName, closeContextMenu]);
+      const { pageNumber: targetPage, rect } = contextMenu;
+      closeContextMenu();
+      const label = kind === "question" ? "问题" : "笔记";
+      try {
+        const res = await fetch(PIN_API[kind], {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName,
+            pageNumber: targetPage,
+            rect,
+            content: "",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? `创建${label}失败`);
+        }
+        const item = data.item as PdfPin;
+        updatePins(kind, (prev) => [item, ...prev.filter((p) => p.id !== item.id)]);
+        setActivePin({ kind, id: item.id });
+        setPinDraft(item.content ?? "");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : `创建${label}失败`);
+      }
+    },
+    [contextMenu, fileName, closeContextMenu, updatePins],
+  );
 
-  const openQuestionEditor = useCallback((q: PdfQuestion) => {
-    setActiveQuestionId(q.id);
-    setQuestionDraft(q.content ?? "");
+  const openPinEditor = useCallback((kind: PinKind, pin: PdfPin) => {
+    setActivePin({ kind, id: pin.id });
+    setPinDraft(pin.content ?? "");
   }, []);
 
-  const saveQuestionContent = useCallback(async () => {
-    if (activeQuestionId == null) return;
-    setQuestionSaving(true);
+  const savePinContent = useCallback(async () => {
+    if (!activePin) return;
+    setPinSaving(true);
     try {
-      const res = await fetch("/api/pdf/questions", {
+      const res = await fetch(PIN_API[activePin.kind], {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: activeQuestionId,
-          content: questionDraft,
+          id: activePin.id,
+          content: pinDraft,
         }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? "保存失败");
       }
-      const item = data.item as PdfQuestion;
-      setQuestions((prev) => prev.map((q) => (q.id === item.id ? item : q)));
-      closeQuestionEditor();
+      const item = data.item as PdfPin;
+      updatePins(activePin.kind, (prev) => prev.map((p) => (p.id === item.id ? item : p)));
+      closePinEditor();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
-      setQuestionSaving(false);
+      setPinSaving(false);
     }
-  }, [activeQuestionId, questionDraft, closeQuestionEditor]);
+  }, [activePin, pinDraft, closePinEditor, updatePins]);
 
-  const persistQuestionRect = useCallback(async (q: PdfQuestion) => {
-    try {
-      const res = await fetch("/api/pdf/questions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: q.id,
-          rect: {
-            left: q.rectLeft,
-            top: q.rectTop,
-            width: q.rectWidth,
-            height: q.rectHeight,
-          },
-          pageNumber: q.pageNumber,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error ?? "更新位置失败");
+  const persistPinRect = useCallback(
+    async (kind: PinKind, pin: PdfPin) => {
+      try {
+        const res = await fetch(PIN_API[kind], {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: pin.id,
+            rect: {
+              left: pin.rectLeft,
+              top: pin.rectTop,
+              width: pin.rectWidth,
+              height: pin.rectHeight,
+            },
+            pageNumber: pin.pageNumber,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "更新位置失败");
+        }
+        const item = data.item as PdfPin;
+        updatePins(kind, (prev) => prev.map((row) => (row.id === item.id ? item : row)));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "更新位置失败");
+        if (fileName) void loadPins(kind, fileName);
       }
-      const item = data.item as PdfQuestion;
-      setQuestions((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "更新位置失败");
-      if (fileName) void loadQuestions(fileName);
-    }
-  }, [fileName, loadQuestions]);
+    },
+    [fileName, loadPins, updatePins],
+  );
 
-  const deleteQuestion = useCallback(
-    async (q: PdfQuestion) => {
-      const preview = q.content.trim() ? `\n「${q.content.trim().slice(0, 40)}」` : "";
-      const ok = window.confirm(`确定删除这个问号标记吗？${preview}`);
+  const deletePin = useCallback(
+    async (kind: PinKind, pin: PdfPin) => {
+      const preview = pin.content.trim() ? `\n「${pin.content.trim().slice(0, 40)}」` : "";
+      const confirmMsg =
+        kind === "question"
+          ? `确定删除这个问号标记吗？${preview}`
+          : `确定删除这个笔记标记吗？${preview}`;
+      const ok = window.confirm(confirmMsg);
       if (!ok) return;
 
-      closeQuestionEditor();
+      closePinEditor();
       try {
-        const res = await fetch(`/api/pdf/questions?id=${q.id}`, { method: "DELETE" });
+        const res = await fetch(`${PIN_API[kind]}?id=${pin.id}`, { method: "DELETE" });
         const data = await res.json();
         if (!res.ok || !data.ok) {
           throw new Error(data.error ?? "删除失败");
         }
-        setQuestions((prev) => prev.filter((row) => row.id !== q.id));
+        updatePins(kind, (prev) => prev.filter((row) => row.id !== pin.id));
       } catch (err) {
         setError(err instanceof Error ? err.message : "删除失败");
       }
     },
-    [closeQuestionEditor],
+    [closePinEditor, updatePins],
   );
 
-  const onQuestionPointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLButtonElement>, q: PdfQuestion) => {
+  const onPinPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>, kind: PinKind, pin: PdfPin) => {
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       closeContextMenu();
       closeMarkerMenu();
-      closeQuestionEditor();
-      questionDragRef.current = {
-        id: q.id,
+      closePinEditor();
+      pinDragRef.current = {
+        kind,
+        id: pin.id,
         startClientX: e.clientX,
         startClientY: e.clientY,
-        originLeft: q.rectLeft,
-        originTop: q.rectTop,
-        width: q.rectWidth,
-        height: q.rectHeight,
-        currentLeft: q.rectLeft,
-        currentTop: q.rectTop,
+        originLeft: pin.rectLeft,
+        originTop: pin.rectTop,
+        width: pin.rectWidth,
+        height: pin.rectHeight,
+        currentLeft: pin.rectLeft,
+        currentTop: pin.rectTop,
         moved: false,
       };
-      setDraggingQuestionId(q.id);
+      setDraggingPin({ kind, id: pin.id });
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [closeContextMenu, closeMarkerMenu, closeQuestionEditor],
+    [closeContextMenu, closeMarkerMenu, closePinEditor],
   );
 
-  const onQuestionPointerMove = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
-    const drag = questionDragRef.current;
-    if (!drag || drag.id !== Number(e.currentTarget.dataset.questionId)) return;
+  const onPinPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>, kind: PinKind) => {
+      const drag = pinDragRef.current;
+      if (!drag || drag.kind !== kind || drag.id !== Number(e.currentTarget.dataset.pinId)) return;
 
-    const pageEl = containerRef.current?.querySelector(".react-pdf__Page") as HTMLElement | null;
-    if (!pageEl) return;
-    const box = pageEl.getBoundingClientRect();
-    if (box.width <= 0 || box.height <= 0) return;
+      const pageEl = containerRef.current?.querySelector(".react-pdf__Page") as HTMLElement | null;
+      if (!pageEl) return;
+      const box = pageEl.getBoundingClientRect();
+      if (box.width <= 0 || box.height <= 0) return;
 
-    const dx = (e.clientX - drag.startClientX) / box.width;
-    const dy = (e.clientY - drag.startClientY) / box.height;
-    if (Math.abs(e.clientX - drag.startClientX) > 3 || Math.abs(e.clientY - drag.startClientY) > 3) {
-      drag.moved = true;
-    }
+      const dx = (e.clientX - drag.startClientX) / box.width;
+      const dy = (e.clientY - drag.startClientY) / box.height;
+      if (Math.abs(e.clientX - drag.startClientX) > 3 || Math.abs(e.clientY - drag.startClientY) > 3) {
+        drag.moved = true;
+      }
 
-    const left = round4(Math.min(Math.max(0, drag.originLeft + dx), Math.max(0, 1 - drag.width)));
-    const top = round4(Math.min(Math.max(0, drag.originTop + dy), Math.max(0, 1 - drag.height)));
-    drag.currentLeft = left;
-    drag.currentTop = top;
+      const left = round4(Math.min(Math.max(0, drag.originLeft + dx), Math.max(0, 1 - drag.width)));
+      const top = round4(Math.min(Math.max(0, drag.originTop + dy), Math.max(0, 1 - drag.height)));
+      drag.currentLeft = left;
+      drag.currentTop = top;
 
-    setQuestions((prev) =>
-      prev.map((row) =>
-        row.id === drag.id ? { ...row, rectLeft: left, rectTop: top } : row,
-      ),
-    );
-  }, []);
+      updatePins(kind, (prev) =>
+        prev.map((row) =>
+          row.id === drag.id ? { ...row, rectLeft: left, rectTop: top } : row,
+        ),
+      );
+    },
+    [updatePins],
+  );
 
-  const onQuestionPointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLButtonElement>, q: PdfQuestion, openOnClick = true) => {
-      const drag = questionDragRef.current;
-      if (!drag || drag.id !== q.id) return;
+  const onPinPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>, kind: PinKind, pin: PdfPin, openOnClick = true) => {
+      const drag = pinDragRef.current;
+      if (!drag || drag.kind !== kind || drag.id !== pin.id) return;
 
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
 
       const moved = drag.moved;
-      const next: PdfQuestion = {
-        ...q,
+      const next: PdfPin = {
+        ...pin,
         rectLeft: drag.currentLeft,
         rectTop: drag.currentTop,
       };
-      questionDragRef.current = null;
-      setDraggingQuestionId(null);
+      pinDragRef.current = null;
+      setDraggingPin(null);
 
       if (moved) {
-        setQuestions((prev) =>
+        updatePins(kind, (prev) =>
           prev.map((row) =>
             row.id === next.id ? { ...row, rectLeft: next.rectLeft, rectTop: next.rectTop } : row,
           ),
         );
-        void persistQuestionRect(next);
+        void persistPinRect(kind, next);
         return;
       }
 
-      if (openOnClick) openQuestionEditor(q);
+      if (openOnClick) openPinEditor(kind, pin);
     },
-    [openQuestionEditor, persistQuestionRect],
+    [openPinEditor, persistPinRect, updatePins],
   );
   useEffect(() => {
     if (!contextMenu) return;
@@ -1116,16 +1173,16 @@ export default function PdfViewer({
   }, [markerMenu, closeMarkerMenu]);
 
   useEffect(() => {
-    if (activeQuestionId == null) return;
+    if (!activePin) return;
 
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
-      if (questionEditorRef.current?.contains(target)) return;
-      if ((target as Element).closest?.("[data-question-marker]")) return;
-      closeQuestionEditor();
+      if (pinEditorRef.current?.contains(target)) return;
+      if ((target as Element).closest?.("[data-question-marker],[data-note-marker]")) return;
+      closePinEditor();
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeQuestionEditor();
+      if (e.key === "Escape") closePinEditor();
     };
 
     window.addEventListener("pointerdown", onPointerDown);
@@ -1134,16 +1191,16 @@ export default function PdfViewer({
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [activeQuestionId, closeQuestionEditor]);
+  }, [activePin, closePinEditor]);
 
   useEffect(() => {
     closeContextMenu();
     closeMarkerMenu();
-    closeQuestionEditor();
+    closePinEditor();
     setDraftArrow(null);
     setSelectedAnnotationId(null);
     arrowStrokeRef.current = null;
-  }, [pageNumber, closeContextMenu, closeMarkerMenu, closeQuestionEditor]);
+  }, [pageNumber, closeContextMenu, closeMarkerMenu, closePinEditor]);
 
   useEffect(() => {
     if (!drawTool) return;
@@ -1192,8 +1249,9 @@ export default function PdfViewer({
   }, [selectedAnnotationId, drawTool, annotations, deleteAnnotation]);
 
   const contextMenuItems = [
-    { id: "annotate", label: "标注" },
+    { id: "note", label: "笔记" },
     { id: "question", label: "问题" },
+    { id: "annotate", label: "标注" },
     { id: "help", label: "帮助" },
   ] as const;
 
@@ -1213,15 +1271,21 @@ export default function PdfViewer({
     [questions, pageNumber],
   );
 
+  const pageNotes = useMemo(
+    () => notes.filter((n) => n.pageNumber === pageNumber),
+    [notes, pageNumber],
+  );
+
   const pageArrows = useMemo(
     () => annotations.filter((a) => a.pageNumber === pageNumber && a.type === "arrow"),
     [annotations, pageNumber],
   );
 
-  const activeQuestion = useMemo(
-    () => questions.find((q) => q.id === activeQuestionId) ?? null,
-    [questions, activeQuestionId],
-  );
+  const activePinItem = useMemo(() => {
+    if (!activePin) return null;
+    const list = activePin.kind === "question" ? questions : notes;
+    return list.find((p) => p.id === activePin.id) ?? null;
+  }, [activePin, questions, notes]);
 
   return (
     <div ref={rootRef} className="space-y-4">
@@ -1486,78 +1550,124 @@ export default function PdfViewer({
                     }}
                   />
                 ) : null}
-                {pageQuestions.map((q) => (
-                  <button
-                    key={q.id}
-                    type="button"
-                    data-question-marker
-                    data-question-id={q.id}
-                    aria-label={q.content ? `问题：${q.content}` : "问题标记"}
-                    title={q.content || "拖动移动 · 点击编辑 · 右键菜单"}
-                    className={`absolute z-30 flex touch-none items-center justify-center rounded-full border text-sm font-semibold leading-none shadow-sm select-none ${
-                      draggingQuestionId === q.id
-                        ? "cursor-grabbing border-[#b45309] bg-[#fef3c7] text-[#92400e]"
-                        : activeQuestionId === q.id
-                          ? "cursor-grab border-[#b45309] bg-[#fef3c7] text-[#92400e]"
-                          : q.content
-                            ? "cursor-grab border-[#d97706] bg-[#fffbeb] text-[#b45309]"
-                            : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
-                    }`}
-                    style={{
-                      left: `${q.rectLeft * 100}%`,
-                      top: `${q.rectTop * 100}%`,
-                      width: `${Math.max(q.rectWidth, 0.02) * 100}%`,
-                      height: `${Math.max(q.rectHeight, 0.02) * 100}%`,
-                    }}
-                    onPointerDown={(e) => onQuestionPointerDown(e, q)}
-                    onPointerMove={onQuestionPointerMove}
-                    onPointerUp={(e) => onQuestionPointerUp(e, q)}
-                    onPointerCancel={(e) => onQuestionPointerUp(e, q, false)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onContextMenu={(e) => openMarkerMenu(e, { kind: "question", question: q })}
-                  >
-                    ?
-                  </button>
-                ))}
-                {activeQuestion && activeQuestion.pageNumber === pageNumber ? (
+                {pageQuestions.map((q) => {
+                  const isDragging =
+                    draggingPin?.kind === "question" && draggingPin.id === q.id;
+                  const isActive =
+                    activePin?.kind === "question" && activePin.id === q.id;
+                  return (
+                    <button
+                      key={`q-${q.id}`}
+                      type="button"
+                      data-question-marker
+                      data-pin-id={q.id}
+                      aria-label={q.content ? `问题：${q.content}` : "问题标记"}
+                      title={q.content || "拖动移动 · 点击编辑 · 右键菜单"}
+                      className={`absolute z-30 flex touch-none items-center justify-center rounded-full border text-sm font-semibold leading-none shadow-sm select-none ${
+                        isDragging
+                          ? "cursor-grabbing border-[#b45309] bg-[#fef3c7] text-[#92400e]"
+                          : isActive
+                            ? "cursor-grab border-[#b45309] bg-[#fef3c7] text-[#92400e]"
+                            : q.content
+                              ? "cursor-grab border-[#d97706] bg-[#fffbeb] text-[#b45309]"
+                              : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
+                      }`}
+                      style={{
+                        left: `${q.rectLeft * 100}%`,
+                        top: `${q.rectTop * 100}%`,
+                        width: `${Math.max(q.rectWidth, 0.02) * 100}%`,
+                        height: `${Math.max(q.rectHeight, 0.02) * 100}%`,
+                      }}
+                      onPointerDown={(e) => onPinPointerDown(e, "question", q)}
+                      onPointerMove={(e) => onPinPointerMove(e, "question")}
+                      onPointerUp={(e) => onPinPointerUp(e, "question", q)}
+                      onPointerCancel={(e) => onPinPointerUp(e, "question", q, false)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onContextMenu={(e) => openMarkerMenu(e, { kind: "question", pin: q })}
+                    >
+                      ?
+                    </button>
+                  );
+                })}
+                {pageNotes.map((n) => {
+                  const isDragging = draggingPin?.kind === "note" && draggingPin.id === n.id;
+                  const isActive = activePin?.kind === "note" && activePin.id === n.id;
+                  return (
+                    <button
+                      key={`n-${n.id}`}
+                      type="button"
+                      data-note-marker
+                      data-pin-id={n.id}
+                      aria-label={n.content ? `笔记：${n.content}` : "笔记标记"}
+                      title={n.content || "拖动移动 · 点击编辑 · 右键菜单"}
+                      className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
+                        isDragging
+                          ? "cursor-grabbing border-[#475569] bg-[#e2e8f0] text-[#334155]"
+                          : isActive
+                            ? "cursor-grab border-[#475569] bg-[#e2e8f0] text-[#334155]"
+                            : n.content
+                              ? "cursor-grab border-[#64748b] bg-[#f1f5f9] text-[#475569]"
+                              : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
+                      }`}
+                      style={{
+                        left: `${n.rectLeft * 100}%`,
+                        top: `${n.rectTop * 100}%`,
+                        width: `${Math.max(n.rectWidth, 0.02) * 100}%`,
+                        height: `${Math.max(n.rectHeight, 0.02) * 100}%`,
+                      }}
+                      onPointerDown={(e) => onPinPointerDown(e, "note", n)}
+                      onPointerMove={(e) => onPinPointerMove(e, "note")}
+                      onPointerUp={(e) => onPinPointerUp(e, "note", n)}
+                      onPointerCancel={(e) => onPinPointerUp(e, "note", n, false)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onContextMenu={(e) => openMarkerMenu(e, { kind: "note", pin: n })}
+                    >
+                      <NoteMarkerIcon />
+                    </button>
+                  );
+                })}
+                {activePin && activePinItem && activePinItem.pageNumber === pageNumber ? (
                   <div
-                    ref={questionEditorRef}
+                    ref={pinEditorRef}
                     className="absolute z-40 w-56 border border-[#d6d3d1] bg-[#faf8f4] p-2 shadow-md"
                     style={{
-                      left: `${Math.min((activeQuestion.rectLeft + activeQuestion.rectWidth) * 100, 72)}%`,
-                      top: `${activeQuestion.rectTop * 100}%`,
+                      left: `${Math.min((activePinItem.rectLeft + activePinItem.rectWidth) * 100, 72)}%`,
+                      top: `${activePinItem.rectTop * 100}%`,
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
                   >
                     <p className="mb-1 text-xs text-[#78716c]">
-                      {activeQuestion.fileName} · 第 {activeQuestion.pageNumber} 页
+                      {activePinItem.fileName} · 第 {activePinItem.pageNumber} 页
                     </p>
                     <textarea
-                      value={questionDraft}
-                      onChange={(e) => setQuestionDraft(e.target.value)}
+                      value={pinDraft}
+                      onChange={(e) => setPinDraft(e.target.value)}
                       rows={3}
-                      placeholder="输入问题…"
+                      placeholder={activePin.kind === "question" ? "输入问题…" : "输入笔记…"}
                       className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
                       autoFocus
                     />
                     <div className="mt-1.5 flex justify-end gap-1.5">
                       <button
                         type="button"
-                        onClick={closeQuestionEditor}
+                        onClick={closePinEditor}
                         className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
                       >
                         取消
                       </button>
                       <button
                         type="button"
-                        disabled={questionSaving}
-                        onClick={() => void saveQuestionContent()}
+                        disabled={pinSaving}
+                        onClick={() => void savePinContent()}
                         className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
                       >
-                        {questionSaving ? "保存中…" : "保存"}
+                        {pinSaving ? "保存中…" : "保存"}
                       </button>
                     </div>
                   </div>
@@ -1653,7 +1763,11 @@ export default function PdfViewer({
                 className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
                 onClick={() => {
                   if (item.id === "question") {
-                    void handleAddQuestion();
+                    void handleAddPin("question");
+                    return;
+                  }
+                  if (item.id === "note") {
+                    void handleAddPin("note");
                     return;
                   }
                   closeContextMenu();
@@ -1678,10 +1792,10 @@ export default function PdfViewer({
             role="menuitem"
             className="block w-full px-3 py-1.5 text-left text-sm text-[#b91c1c] hover:bg-[#fee2e2]"
             onClick={() => {
-              if (markerMenu.kind === "question") {
-                const q = markerMenu.question;
+              if (markerMenu.kind === "question" || markerMenu.kind === "note") {
+                const { kind, pin } = markerMenu;
                 closeMarkerMenu();
-                void deleteQuestion(q);
+                void deletePin(kind, pin);
                 return;
               }
               const a = markerMenu.annotation;

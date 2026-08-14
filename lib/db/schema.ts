@@ -68,6 +68,24 @@ export const pdfQuestions = sqliteTable("pdf_questions", {
     .$defaultFn(() => new Date()),
 });
 
+/** PDF 笔记标记：便签位置 + 笔记内容 */
+export const pdfNotes = sqliteTable("pdf_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  fileName: text("file_name").notNull(),
+  pageNumber: integer("page_number").notNull(),
+  rectLeft: real("rect_left").notNull(),
+  rectTop: real("rect_top").notNull(),
+  rectWidth: real("rect_width").notNull(),
+  rectHeight: real("rect_height").notNull(),
+  content: text("content").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 /** PDF 标注笔记：箭头 / 圆形 / 矩形等 */
 export const pdfAnnotations = sqliteTable("pdf_annotations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
