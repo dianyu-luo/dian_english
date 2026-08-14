@@ -44,6 +44,8 @@ type PdfViewerProps = {
   onRecentChange?: (item: RecentItem | null) => void;
   onWordMarksChange?: () => void;
   jumpRequest?: PdfJumpRequest | null;
+  /** 填满父容器高度（侧栏布局用） */
+  fillHeight?: boolean;
 };
 
 type PdfPin = {
@@ -312,6 +314,7 @@ export default function PdfViewer({
   onRecentChange,
   onWordMarksChange,
   jumpRequest,
+  fillHeight = false,
 }: PdfViewerProps) {
   const [file, setFile] = useState<PdfSource>(null);
   const [fileName, setFileName] = useState("");
@@ -1597,8 +1600,8 @@ export default function PdfViewer({
   }, [activeWordMarkId, wordMarks]);
 
   return (
-    <div ref={rootRef} className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 border border-[#e7e2d9] bg-[#faf8f4] px-3 py-2">
+    <div ref={rootRef} className={fillHeight ? "flex h-full min-h-0 flex-col gap-3" : "space-y-4"}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border border-[#e7e2d9] bg-[#faf8f4] px-3 py-2">
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -1706,7 +1709,9 @@ export default function PdfViewer({
           setDragging(false);
           void openFile(e.dataTransfer.files?.[0] ?? null);
         }}
-        className={`relative min-h-[70vh] border border-[#e7e2d9] bg-[#efebe4] ${
+        className={`relative border border-[#e7e2d9] bg-[#efebe4] ${
+          fillHeight ? "min-h-0 flex-1" : "min-h-[70vh]"
+        } ${
           dragging ? "outline outline-2 outline-[#a8a29e]" : ""
         } ${drawTool === "arrow" ? "outline outline-2 outline-[#dc2626]/60" : ""}`}
       >
@@ -1743,20 +1748,22 @@ export default function PdfViewer({
         ) : null}
 
         {booting ? (
-          <div className="flex min-h-[70vh] items-center justify-center">
+          <div className={`flex items-center justify-center ${fillHeight ? "h-full" : "min-h-[70vh]"}`}>
             <p className="text-sm text-[#78716c]">正在恢复上次阅读…</p>
           </div>
         ) : !file ? (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="flex min-h-[70vh] w-full flex-col items-center justify-center gap-2 px-6 text-center"
+            className={`flex w-full flex-col items-center justify-center gap-2 px-6 text-center ${
+              fillHeight ? "h-full" : "min-h-[70vh]"
+            }`}
           >
             <p className="text-base font-medium text-[#1c1917]">拖入或选择 PDF</p>
             <p className="text-sm text-[#78716c]">打开后会记住文件与页码，下次自动续读</p>
           </button>
         ) : (
-          <div className="flex justify-center overflow-auto px-12 py-4">
+          <div className={`flex justify-center overflow-auto px-12 py-4 ${fillHeight ? "h-full" : ""}`}>
             <Document
               file={file}
               onLoadSuccess={onDocumentLoadSuccess}
