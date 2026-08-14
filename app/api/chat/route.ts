@@ -1,6 +1,11 @@
-import { NextResponse } from "next/server";
 import { deepseekConfig } from "@/lib/ai/config";
-import { createDeepseekChat, type ChatTurn } from "@/lib/ai/deepseek";
+import {
+  createDeepseekChatStream,
+  readStreamDelta,
+  type ChatTurn,
+} from "@/lib/ai/deepseek";
+
+export const runtime = "nodejs";
 
 type IncomingMessage = {
   role?: string;
@@ -9,7 +14,6 @@ type IncomingMessage = {
 
 type ChatBody = {
   messages?: IncomingMessage[];
-  /** 当前 PDF 选区（可选） */
   selection?: {
     word?: string;
     type?: string;
@@ -39,9 +43,13 @@ function buildSystemPrompt(selection: ChatBody["selection"]): string {
   return parts.join("\n");
 }
 
+function sse(data: unknown) {
+  return `data: ${JSON.stringify(data)}\n\n`;
+}
+
 export async function POST(request: Request) {
   if (!deepseekConfig.apiKey) {
-    return NextResponse.json(
+    return Response.json(
       { ok: false, error: "未配置 DEEPSEEK_API_KEY。请在项目根目录创建 .env.local 并填写密钥。" },
       { status: 500 },
     );
@@ -51,7 +59,7 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as ChatBody;
   } catch {
-    return NextResponse.json({ ok: false, error: "请求体必须是 JSON" }, { status: 400 });
+    return Response.json({ ok: false, error: "请求体必须是 JSON" }, { status: 400 });
   }
 
   const incoming = Array.isArray(body.messages) ? body.messages : [];
@@ -66,7 +74,7 @@ export async function POST(request: Request) {
     .slice(-20);
 
   if (history.length === 0) {
-    return NextResponse.json({ ok: false, error: "messages 不能为空" }, { status: 400 });
+    return Response.json({ ok: false, error: "messages 不能为空" }, { status: 400 });
   }
 
   const messages: ChatTurn[] = [
@@ -74,18 +82,40 @@ export async function POST(request: Request) {
     ...history,
   ];
 
-  try {
-    const result = await createDeepseekChat({ messages });
-    if (!result.content) {
-      return NextResponse.json({ ok: false, error: "模型未返回内容" }, { status: 502 });
-    }
-    return NextResponse.json({
-      ok: true,
-      content: result.content,
-      model: deepseekConfig.model,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "调用模型失败";
-    return NextResponse.json({ ok: false, error: message }, { status: 502 });
-  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const push = (payload: unknown) => {
+        controller.enqueue(encoder.encode(sse(payload)));
+      };
+
+      try {
+        push({ type: "start", model: deepseekConfig.model });
+        const completion = await createDeepseekChatStream({ messages });
+
+        for await (const chunk of completion) {
+          if (request.signal.aborted) break;
+          const { content, reasoning } = readStreamDelta(chunk);
+          if (reasoning) push({ type: "reasoning", delta: reasoning });
+          if (content) push({ type: "delta", delta: content });
+        }
+
+        push({ type: "done" });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "调用模型失败";
+        push({ type: "error", error: message });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

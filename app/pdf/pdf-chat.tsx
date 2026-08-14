@@ -8,6 +8,7 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  streaming?: boolean;
 };
 
 type PdfChatProps = {
@@ -16,8 +17,56 @@ type PdfChatProps = {
   pageNumber?: number;
 };
 
+type SseEvent =
+  | { type: "start"; model?: string }
+  | { type: "delta"; delta: string }
+  | { type: "reasoning"; delta: string }
+  | { type: "done" }
+  | { type: "error"; error: string };
+
 function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function readChatStream(
+  res: Response,
+  onEvent: (event: SseEvent) => void,
+) {
+  if (!res.body) throw new Error("响应无正文");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const line = part
+        .split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      const raw = line.slice(5).trim();
+      if (!raw || raw === "[DONE]") continue;
+
+      let event: SseEvent;
+      try {
+        event = JSON.parse(raw) as SseEvent;
+      } catch {
+        continue;
+      }
+      if (event.type === "error") {
+        throw new Error(event.error || "流式输出失败");
+      }
+      onEvent(event);
+    }
+  }
 }
 
 export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps) {
@@ -34,6 +83,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const el = listRef.current;
@@ -41,9 +91,19 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
     el.scrollTop = el.scrollHeight;
   }, [messages, sending, error]);
 
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || sending) return;
+
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
 
     const userMsg: ChatMessage = {
       id: makeId(),
@@ -51,8 +111,18 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       content,
       createdAt: Date.now(),
     };
+    const assistantId = makeId();
     const nextMessages = [...messages, userMsg];
-    setMessages(nextMessages);
+    setMessages([
+      ...nextMessages,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        createdAt: Date.now(),
+        streaming: true,
+      },
+    ]);
     setDraft("");
     setError(null);
     setSending(true);
@@ -65,6 +135,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ac.signal,
         body: JSON.stringify({
           messages: history,
           selection: selected
@@ -81,21 +152,54 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
               : null,
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; content?: string; error?: string };
-      if (!res.ok || !data.ok || !data.content) {
-        throw new Error(data.error ?? "请求失败");
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!res.ok || !contentType.includes("text/event-stream")) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(data?.error ?? `请求失败 (${res.status})`);
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: makeId(),
-          role: "assistant",
-          content: data.content!,
-          createdAt: Date.now(),
-        },
-      ]);
+      let gotContent = false;
+      await readChatStream(res, (event) => {
+        if (event.type === "delta" && event.delta) {
+          gotContent = true;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: m.content + event.delta, streaming: true }
+                : m,
+            ),
+          );
+        } else if (event.type === "done") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, streaming: false } : m,
+            ),
+          );
+        }
+      });
+
+      setMessages((prev) => {
+        const row = prev.find((m) => m.id === assistantId);
+        if (!row) return prev;
+        if (!gotContent && !row.content.trim()) {
+          return prev.filter((m) => m.id !== assistantId);
+        }
+        return prev.map((m) =>
+          m.id === assistantId ? { ...m, streaming: false } : m,
+        );
+      });
+
+      if (!gotContent) {
+        throw new Error("模型未返回内容");
+      }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setMessages((prev) =>
+        prev.filter((m) => !(m.id === assistantId && !m.content.trim())),
+      );
       setError(err instanceof Error ? err.message : "发送失败");
     } finally {
       setSending(false);
@@ -165,20 +269,14 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
                   : "border border-[#e7e2d9] bg-white text-[#292524]"
               }`}
             >
-              {m.content}
+              {m.content || (m.streaming ? "思考中…" : "")}
+              {m.streaming && m.content ? (
+                <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-[#a8a29e] align-middle" />
+              ) : null}
             </div>
           </div>
         ))}
-        {sending ? (
-          <div className="flex justify-start">
-            <div className="border border-[#e7e2d9] bg-white px-3 py-2 text-sm text-[#a8a29e]">
-              思考中…
-            </div>
-          </div>
-        ) : null}
-        {error ? (
-          <p className="text-sm text-[#b91c1c]">{error}</p>
-        ) : null}
+        {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
       </div>
 
       <form onSubmit={onSubmit} className="shrink-0 border-t border-[#e7e2d9] p-3">
@@ -198,7 +296,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
             disabled={sending || !draft.trim()}
             className="border border-[#d6d3d1] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-40"
           >
-            发送
+            {sending ? "生成中…" : "发送"}
           </button>
         </div>
       </form>

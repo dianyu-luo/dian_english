@@ -26,28 +26,32 @@ type CreateChatOptions = {
   messages: ChatTurn[];
 };
 
-type DeepseekMessage = {
+type StreamDelta = {
   content?: string | null;
-  reasoning_content?: string;
+  reasoning_content?: string | null;
 };
 
-/** 非流式对话；参数集中在 lib/ai/config.ts */
-export async function createDeepseekChat({ messages }: CreateChatOptions) {
+/** 流式对话；参数集中在 lib/ai/config.ts */
+export async function createDeepseekChatStream({ messages }: CreateChatOptions) {
   const openai = getDeepseekClient();
 
-  // DeepSeek 扩展字段 thinking 不在 OpenAI 官方类型里，整包断言一次
-  const completion = await openai.chat.completions.create({
+  return openai.chat.completions.create({
     model: deepseekConfig.model,
     messages,
-    stream: false,
+    stream: true,
     reasoning_effort: deepseekConfig.reasoningEffort,
     thinking: { type: deepseekConfig.thinking },
-  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+  } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
+}
 
-  const message = completion.choices[0]?.message as DeepseekMessage | undefined;
+/** 从 DeepSeek/OpenAI chunk 里取出正文与推理增量 */
+export function readStreamDelta(chunk: OpenAI.Chat.Completions.ChatCompletionChunk): {
+  content: string;
+  reasoning: string;
+} {
+  const delta = chunk.choices[0]?.delta as StreamDelta | undefined;
   return {
-    content: message?.content?.trim() ?? "",
-    reasoning: message?.reasoning_content,
-    raw: completion,
+    content: typeof delta?.content === "string" ? delta.content : "",
+    reasoning: typeof delta?.reasoning_content === "string" ? delta.reasoning_content : "",
   };
 }
