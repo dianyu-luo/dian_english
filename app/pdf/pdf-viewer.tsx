@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -59,6 +59,12 @@ type ContextMenuState = {
   rect: PdfHighlightRect;
 };
 
+type MarkerMenuState = {
+  x: number;
+  y: number;
+  question: PdfQuestion;
+};
+
 const QUESTION_MARKER_PX = 28;
 
 function round4(n: number) {
@@ -100,16 +106,31 @@ export default function PdfViewer({
   >(null);
   const [pageInput, setPageInput] = useState("1");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
   const [questions, setQuestions] = useState<PdfQuestion[]>([]);
   const [activeQuestionId, setActiveQuestionId] = useState<number | null>(null);
   const [questionDraft, setQuestionDraft] = useState("");
   const [questionSaving, setQuestionSaving] = useState(false);
+  const [draggingQuestionId, setDraggingQuestionId] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const markerMenuRef = useRef<HTMLDivElement>(null);
   const questionEditorRef = useRef<HTMLDivElement>(null);
+  const questionDragRef = useRef<{
+    id: number;
+    startClientX: number;
+    startClientY: number;
+    originLeft: number;
+    originTop: number;
+    width: number;
+    height: number;
+    currentLeft: number;
+    currentTop: number;
+    moved: boolean;
+  } | null>(null);
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
   const pageNumberRef = useRef(pageNumber);
@@ -406,6 +427,7 @@ export default function PdfViewer({
   }, [centerHighlight]);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeMarkerMenu = useCallback(() => setMarkerMenu(null), []);
 
   const closeQuestionEditor = useCallback(() => {
     setActiveQuestionId(null);
@@ -458,6 +480,7 @@ export default function PdfViewer({
       const rect = getPageNormRect(e.clientX, e.clientY);
       if (!rect) return;
       e.preventDefault();
+      closeMarkerMenu();
       const menuW = 140;
       const menuH = 120;
       const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
@@ -469,7 +492,26 @@ export default function PdfViewer({
         rect,
       });
     },
-    [file, booting, getPageNormRect],
+    [file, booting, getPageNormRect, closeMarkerMenu],
+  );
+
+  const openMarkerMenu = useCallback(
+    (e: MouseEvent, q: PdfQuestion) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeContextMenu();
+      closeQuestionEditor();
+      const menuW = 120;
+      const menuH = 48;
+      const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+      const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+      setMarkerMenu({
+        x: Math.max(8, x),
+        y: Math.max(8, y),
+        question: q,
+      });
+    },
+    [closeContextMenu, closeQuestionEditor],
   );
 
   const handleAddQuestion = useCallback(async () => {
@@ -534,6 +576,140 @@ export default function PdfViewer({
     }
   }, [activeQuestionId, questionDraft, closeQuestionEditor]);
 
+  const persistQuestionRect = useCallback(async (q: PdfQuestion) => {
+    try {
+      const res = await fetch("/api/pdf/questions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: q.id,
+          rect: {
+            left: q.rectLeft,
+            top: q.rectTop,
+            width: q.rectWidth,
+            height: q.rectHeight,
+          },
+          pageNumber: q.pageNumber,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "更新位置失败");
+      }
+      const item = data.item as PdfQuestion;
+      setQuestions((prev) => prev.map((row) => (row.id === item.id ? item : row)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "更新位置失败");
+      if (fileName) void loadQuestions(fileName);
+    }
+  }, [fileName, loadQuestions]);
+
+  const deleteQuestion = useCallback(
+    async (q: PdfQuestion) => {
+      const preview = q.content.trim() ? `\n「${q.content.trim().slice(0, 40)}」` : "";
+      const ok = window.confirm(`确定删除这个问号标记吗？${preview}`);
+      if (!ok) return;
+
+      closeQuestionEditor();
+      try {
+        const res = await fetch(`/api/pdf/questions?id=${q.id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "删除失败");
+        }
+        setQuestions((prev) => prev.filter((row) => row.id !== q.id));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "删除失败");
+      }
+    },
+    [closeQuestionEditor],
+  );
+
+  const onQuestionPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>, q: PdfQuestion) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeContextMenu();
+      closeMarkerMenu();
+      closeQuestionEditor();
+      questionDragRef.current = {
+        id: q.id,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        originLeft: q.rectLeft,
+        originTop: q.rectTop,
+        width: q.rectWidth,
+        height: q.rectHeight,
+        currentLeft: q.rectLeft,
+        currentTop: q.rectTop,
+        moved: false,
+      };
+      setDraggingQuestionId(q.id);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [closeContextMenu, closeMarkerMenu, closeQuestionEditor],
+  );
+
+  const onQuestionPointerMove = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = questionDragRef.current;
+    if (!drag || drag.id !== Number(e.currentTarget.dataset.questionId)) return;
+
+    const pageEl = containerRef.current?.querySelector(".react-pdf__Page") as HTMLElement | null;
+    if (!pageEl) return;
+    const box = pageEl.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) return;
+
+    const dx = (e.clientX - drag.startClientX) / box.width;
+    const dy = (e.clientY - drag.startClientY) / box.height;
+    if (Math.abs(e.clientX - drag.startClientX) > 3 || Math.abs(e.clientY - drag.startClientY) > 3) {
+      drag.moved = true;
+    }
+
+    const left = round4(Math.min(Math.max(0, drag.originLeft + dx), Math.max(0, 1 - drag.width)));
+    const top = round4(Math.min(Math.max(0, drag.originTop + dy), Math.max(0, 1 - drag.height)));
+    drag.currentLeft = left;
+    drag.currentTop = top;
+
+    setQuestions((prev) =>
+      prev.map((row) =>
+        row.id === drag.id ? { ...row, rectLeft: left, rectTop: top } : row,
+      ),
+    );
+  }, []);
+
+  const onQuestionPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>, q: PdfQuestion, openOnClick = true) => {
+      const drag = questionDragRef.current;
+      if (!drag || drag.id !== q.id) return;
+
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+
+      const moved = drag.moved;
+      const next: PdfQuestion = {
+        ...q,
+        rectLeft: drag.currentLeft,
+        rectTop: drag.currentTop,
+      };
+      questionDragRef.current = null;
+      setDraggingQuestionId(null);
+
+      if (moved) {
+        setQuestions((prev) =>
+          prev.map((row) =>
+            row.id === next.id ? { ...row, rectLeft: next.rectLeft, rectTop: next.rectTop } : row,
+          ),
+        );
+        void persistQuestionRect(next);
+        return;
+      }
+
+      if (openOnClick) openQuestionEditor(q);
+    },
+    [openQuestionEditor, persistQuestionRect],
+  );
   useEffect(() => {
     if (!contextMenu) return;
 
@@ -555,6 +731,28 @@ export default function PdfViewer({
       window.removeEventListener("scroll", onScroll, true);
     };
   }, [contextMenu, closeContextMenu]);
+
+  useEffect(() => {
+    if (!markerMenu) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (markerMenuRef.current?.contains(e.target as Node)) return;
+      closeMarkerMenu();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMarkerMenu();
+    };
+    const onScroll = () => closeMarkerMenu();
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [markerMenu, closeMarkerMenu]);
 
   useEffect(() => {
     if (activeQuestionId == null) return;
@@ -579,8 +777,9 @@ export default function PdfViewer({
 
   useEffect(() => {
     closeContextMenu();
+    closeMarkerMenu();
     closeQuestionEditor();
-  }, [pageNumber, closeContextMenu, closeQuestionEditor]);
+  }, [pageNumber, closeContextMenu, closeMarkerMenu, closeQuestionEditor]);
 
   const contextMenuItems = [
     { id: "annotate", label: "标注" },
@@ -785,14 +984,17 @@ export default function PdfViewer({
                     key={q.id}
                     type="button"
                     data-question-marker
+                    data-question-id={q.id}
                     aria-label={q.content ? `问题：${q.content}` : "问题标记"}
-                    title={q.content || "点击填写问题"}
-                    className={`absolute z-30 flex items-center justify-center rounded-full border text-sm font-semibold leading-none shadow-sm ${
-                      activeQuestionId === q.id
-                        ? "border-[#b45309] bg-[#fef3c7] text-[#92400e]"
-                        : q.content
-                          ? "border-[#d97706] bg-[#fffbeb] text-[#b45309]"
-                          : "border-[#a8a29e] bg-white text-[#57534e]"
+                    title={q.content || "拖动移动 · 点击编辑 · 右键菜单"}
+                    className={`absolute z-30 flex touch-none items-center justify-center rounded-full border text-sm font-semibold leading-none shadow-sm select-none ${
+                      draggingQuestionId === q.id
+                        ? "cursor-grabbing border-[#b45309] bg-[#fef3c7] text-[#92400e]"
+                        : activeQuestionId === q.id
+                          ? "cursor-grab border-[#b45309] bg-[#fef3c7] text-[#92400e]"
+                          : q.content
+                            ? "cursor-grab border-[#d97706] bg-[#fffbeb] text-[#b45309]"
+                            : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
                     }`}
                     style={{
                       left: `${q.rectLeft * 100}%`,
@@ -800,12 +1002,15 @@ export default function PdfViewer({
                       width: `${Math.max(q.rectWidth, 0.02) * 100}%`,
                       height: `${Math.max(q.rectHeight, 0.02) * 100}%`,
                     }}
+                    onPointerDown={(e) => onQuestionPointerDown(e, q)}
+                    onPointerMove={onQuestionPointerMove}
+                    onPointerUp={(e) => onQuestionPointerUp(e, q)}
+                    onPointerCancel={(e) => onQuestionPointerUp(e, q, false)}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      openQuestionEditor(q);
                     }}
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onContextMenu={(e) => openMarkerMenu(e, q)}
                   >
                     ?
                   </button>
@@ -880,6 +1085,28 @@ export default function PdfViewer({
               {item.label}
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {markerMenu ? (
+        <div
+          ref={markerMenuRef}
+          role="menu"
+          className="fixed z-50 min-w-[7.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
+          style={{ left: markerMenu.x, top: markerMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-1.5 text-left text-sm text-[#b91c1c] hover:bg-[#fee2e2]"
+            onClick={() => {
+              const q = markerMenu.question;
+              closeMarkerMenu();
+              void deleteQuestion(q);
+            }}
+          >
+            删除
+          </button>
         </div>
       ) : null}
 

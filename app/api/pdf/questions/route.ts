@@ -146,3 +146,26 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ ok: true, item: row, created: false });
 }
+
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const idRaw = searchParams.get("id");
+  const id = idRaw ? Number(idRaw) : NaN;
+
+  if (!isFiniteNumber(id) || id < 1) {
+    return NextResponse.json({ ok: false, error: "缺少 id" }, { status: 400 });
+  }
+
+  const [existing] = await db
+    .select()
+    .from(pdfQuestions)
+    .where(eq(pdfQuestions.id, id))
+    .limit(1);
+
+  if (!existing) {
+    return NextResponse.json({ ok: false, error: "记录不存在" }, { status: 404 });
+  }
+
+  await db.delete(pdfQuestions).where(eq(pdfQuestions.id, id));
+  return NextResponse.json({ ok: true, id });
+}
