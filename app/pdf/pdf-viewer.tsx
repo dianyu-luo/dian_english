@@ -1653,22 +1653,35 @@ export default function PdfViewer({
                       className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
                       autoFocus
                     />
-                    <div className="mt-1.5 flex justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={closePinEditor}
-                        className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
-                      >
-                        取消
-                      </button>
+                    <div className="mt-1.5 flex items-center justify-between gap-1.5">
                       <button
                         type="button"
                         disabled={pinSaving}
-                        onClick={() => void savePinContent()}
-                        className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+                        onClick={() => {
+                          if (!activePin || !activePinItem) return;
+                          void deletePin(activePin.kind, activePinItem);
+                        }}
+                        className="px-2 py-1 text-xs text-[#b91c1c] hover:bg-[#fee2e2] disabled:opacity-50"
                       >
-                        {pinSaving ? "保存中…" : "保存"}
+                        删除
                       </button>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={closePinEditor}
+                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pinSaving}
+                          onClick={() => void savePinContent()}
+                          className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+                        >
+                          {pinSaving ? "保存中…" : "保存"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
