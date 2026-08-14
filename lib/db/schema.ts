@@ -49,3 +49,21 @@ export const pdfWordMarks = sqliteTable("pdf_word_marks", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/** PDF 问题标记：问号位置 + 问题内容 */
+export const pdfQuestions = sqliteTable("pdf_questions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  fileName: text("file_name").notNull(),
+  pageNumber: integer("page_number").notNull(),
+  rectLeft: real("rect_left").notNull(),
+  rectTop: real("rect_top").notNull(),
+  rectWidth: real("rect_width").notNull(),
+  rectHeight: real("rect_height").notNull(),
+  content: text("content").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
