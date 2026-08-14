@@ -20,26 +20,6 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function stubReply(userText: string, selected: PdfWordSelectInfo | null): string {
-  const focus = selected?.word?.trim();
-  if (focus) {
-    return [
-      `关于「${focus}」：`,
-      "",
-      "目前聊天接口尚未接入模型，这里先占位回复。",
-      `你可以继续提问，例如：解释含义、同义词、或用它造句。`,
-      "",
-      `你的问题：${userText}`,
-    ].join("\n");
-  }
-  return [
-    "目前聊天接口尚未接入模型，这里先占位回复。",
-    "在 PDF 中选中单词或句子后提问，会带上当前选区上下文。",
-    "",
-    `你说：${userText}`,
-  ].join("\n");
-}
-
 export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -51,6 +31,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
   ]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -58,7 +39,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, sending, error]);
 
   const send = async (text: string) => {
     const content = text.trim();
@@ -70,23 +51,56 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       content,
       createdAt: Date.now(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
     setDraft("");
+    setError(null);
     setSending(true);
 
-    // 占位：后续接 /api/chat 流式回复
-    await new Promise((r) => setTimeout(r, 280));
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: makeId(),
-        role: "assistant",
-        content: stubReply(content, selected),
-        createdAt: Date.now(),
-      },
-    ]);
-    setSending(false);
-    inputRef.current?.focus();
+    try {
+      const history = nextMessages
+        .filter((m) => m.id !== "welcome")
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: history,
+          selection: selected
+            ? {
+                word: selected.word,
+                type: selected.type,
+                fileName: selected.fileName || fileName,
+                pageNumber: selected.pageNumber || pageNumber,
+                contextBefore: selected.contextBefore,
+                contextAfter: selected.contextAfter,
+              }
+            : fileName
+              ? { fileName, pageNumber }
+              : null,
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; content?: string; error?: string };
+      if (!res.ok || !data.ok || !data.content) {
+        throw new Error(data.error ?? "请求失败");
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: makeId(),
+          role: "assistant",
+          content: data.content!,
+          createdAt: Date.now(),
+        },
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "发送失败");
+    } finally {
+      setSending(false);
+      inputRef.current?.focus();
+    }
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -161,6 +175,9 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
               思考中…
             </div>
           </div>
+        ) : null}
+        {error ? (
+          <p className="text-sm text-[#b91c1c]">{error}</p>
         ) : null}
       </div>
 
