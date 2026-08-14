@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, typ
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import { getSelectedWordInfo, type OnPdfWordSelect } from "./get-selected-word";
+import {
+  getSelectedWordInfo,
+  type OnPdfWordSelect,
+  type PdfWordSelectInfo,
+} from "./get-selected-word";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -38,6 +42,7 @@ export type PdfJumpRequest = {
 type PdfViewerProps = {
   onWordSelect?: OnPdfWordSelect;
   onRecentChange?: (item: RecentItem | null) => void;
+  onWordMarksChange?: () => void;
   jumpRequest?: PdfJumpRequest | null;
 };
 
@@ -59,6 +64,28 @@ type ContextMenuState = {
   y: number;
   pageNumber: number;
   rect: PdfHighlightRect;
+};
+
+type SelectionMenuState = {
+  x: number;
+  y: number;
+  info: PdfWordSelectInfo;
+};
+
+type PdfWordMark = {
+  id: number;
+  fileName: string;
+  word: string;
+  type: string;
+  note: string;
+  pageNumber: number;
+  rectLeft: number;
+  rectTop: number;
+  rectWidth: number;
+  rectHeight: number;
+  contextBefore: string;
+  contextAfter: string;
+  locator: string;
 };
 
 type PdfAnnotation = {
@@ -283,6 +310,7 @@ async function fetchRecentByFileName(fileName: string): Promise<RecentItem | nul
 export default function PdfViewer({
   onWordSelect,
   onRecentChange,
+  onWordMarksChange,
   jumpRequest,
 }: PdfViewerProps) {
   const [file, setFile] = useState<PdfSource>(null);
@@ -300,14 +328,19 @@ export default function PdfViewer({
   >(null);
   const [pageInput, setPageInput] = useState("1");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
   const [annotateSubmenuOpen, setAnnotateSubmenuOpen] = useState(false);
   const [lastAnnotateTool, setLastAnnotateTool] = useState<AnnotateToolId | null>(null);
   const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
   const [questions, setQuestions] = useState<PdfPin[]>([]);
   const [notes, setNotes] = useState<PdfPin[]>([]);
+  const [wordMarks, setWordMarks] = useState<PdfWordMark[]>([]);
   const [activePin, setActivePin] = useState<{ kind: PinKind; id: number } | null>(null);
   const [pinDraft, setPinDraft] = useState("");
   const [pinSaving, setPinSaving] = useState(false);
+  const [activeWordMarkId, setActiveWordMarkId] = useState<number | null>(null);
+  const [wordMarkDraft, setWordMarkDraft] = useState("");
+  const [wordMarkSaving, setWordMarkSaving] = useState(false);
   const [draggingPin, setDraggingPin] = useState<{ kind: PinKind; id: number } | null>(null);
   const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
   const [drawTool, setDrawTool] = useState<DrawTool>(null);
@@ -323,8 +356,10 @@ export default function PdfViewer({
   const highlightRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const selectionMenuRef = useRef<HTMLDivElement>(null);
   const markerMenuRef = useRef<HTMLDivElement>(null);
   const pinEditorRef = useRef<HTMLDivElement>(null);
+  const wordMarkEditorRef = useRef<HTMLDivElement>(null);
   const pageFrameRef = useRef<HTMLDivElement>(null);
   const arrowStrokeRef = useRef<{
     x1: number;
@@ -346,6 +381,7 @@ export default function PdfViewer({
   } | null>(null);
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
+  const onWordMarksChangeRef = useRef(onWordMarksChange);
   const pageNumberRef = useRef(pageNumber);
   const numPagesRef = useRef(numPages);
   const fileNameRef = useRef(fileName);
@@ -374,6 +410,10 @@ export default function PdfViewer({
   useEffect(() => {
     onRecentChangeRef.current = onRecentChange;
   }, [onRecentChange]);
+
+  useEffect(() => {
+    onWordMarksChangeRef.current = onWordMarksChange;
+  }, [onWordMarksChange]);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
@@ -508,7 +548,8 @@ export default function PdfViewer({
     };
   }, [jumpRequest, showHighlight]);
 
-  const handleTextSelect = useCallback(() => {
+  const handleTextSelect = useCallback((e: globalThis.MouseEvent) => {
+    if (e.button !== 0) return;
     const el = containerRef.current;
     const sel = window.getSelection();
     if (!el || !sel || sel.rangeCount === 0) return;
@@ -524,6 +565,24 @@ export default function PdfViewer({
     if (!info) return;
 
     onWordSelectRef.current?.(info);
+
+    const menuW = 88;
+    const menuH = 40;
+    const rangeBox = sel.getRangeAt(0).getBoundingClientRect();
+    const preferX = Number.isFinite(rangeBox.left) && rangeBox.width > 0 ? rangeBox.left : e.clientX;
+    const preferY =
+      Number.isFinite(rangeBox.bottom) && rangeBox.height > 0 ? rangeBox.bottom + 6 : e.clientY + 6;
+    const x = Math.min(Math.max(8, preferX), window.innerWidth - menuW - 8);
+    const y = Math.min(Math.max(8, preferY), window.innerHeight - menuH - 8);
+
+    setContextMenu(null);
+    setAnnotateSubmenuOpen(false);
+    setMarkerMenu(null);
+    setActivePin(null);
+    setPinDraft("");
+    setActiveWordMarkId(null);
+    setWordMarkDraft("");
+    setSelectionMenu({ x, y, info });
   }, []);
 
   useEffect(() => {
@@ -648,10 +707,16 @@ export default function PdfViewer({
     setAnnotateSubmenuOpen(false);
   }, []);
   const closeMarkerMenu = useCallback(() => setMarkerMenu(null), []);
+  const closeSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
   const closePinEditor = useCallback(() => {
     setActivePin(null);
     setPinDraft("");
+  }, []);
+
+  const closeWordMarkEditor = useCallback(() => {
+    setActiveWordMarkId(null);
+    setWordMarkDraft("");
   }, []);
 
   const updatePins = useCallback((kind: PinKind, updater: (prev: PdfPin[]) => PdfPin[]) => {
@@ -691,16 +756,43 @@ export default function PdfViewer({
     }
   }, []);
 
+  const loadWordMarks = useCallback(async (name: string) => {
+    if (!name) {
+      setWordMarks([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/pdf/words?fileName=${encodeURIComponent(name)}`);
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setWordMarks(data.items as PdfWordMark[]);
+      }
+    } catch {
+      // 加载失败时保留现有列表
+    }
+  }, []);
+
   useEffect(() => {
     void loadPins("question", fileName);
     void loadPins("note", fileName);
     void loadAnnotations(fileName);
+    void loadWordMarks(fileName);
     closePinEditor();
+    closeWordMarkEditor();
+    closeSelectionMenu();
     setDrawTool(null);
     setDraftArrow(null);
     setSelectedAnnotationId(null);
     arrowStrokeRef.current = null;
-  }, [fileName, loadPins, loadAnnotations, closePinEditor]);
+  }, [
+    fileName,
+    loadPins,
+    loadAnnotations,
+    loadWordMarks,
+    closePinEditor,
+    closeWordMarkEditor,
+    closeSelectionMenu,
+  ]);
 
   const getPageNormPoint = useCallback((clientX: number, clientY: number): NormPoint | null => {
     const pageEl =
@@ -739,12 +831,14 @@ export default function PdfViewer({
   const startArrowTool = useCallback(() => {
     closeContextMenu();
     closePinEditor();
+    closeWordMarkEditor();
     closeMarkerMenu();
+    closeSelectionMenu();
     setSelectedAnnotationId(null);
     setDraftArrow(null);
     arrowStrokeRef.current = null;
     setDrawTool("arrow");
-  }, [closeContextMenu, closePinEditor, closeMarkerMenu]);
+  }, [closeContextMenu, closePinEditor, closeWordMarkEditor, closeMarkerMenu, closeSelectionMenu]);
 
   const selectAnnotateTool = useCallback(
     (tool: AnnotateToolId) => {
@@ -863,6 +957,7 @@ export default function PdfViewer({
       if (!rect) return;
       e.preventDefault();
       closeMarkerMenu();
+      closeSelectionMenu();
       setAnnotateSubmenuOpen(false);
       const menuW = 140;
       const menuH = 120;
@@ -875,7 +970,7 @@ export default function PdfViewer({
         rect,
       });
     },
-    [file, booting, getPageNormRect, closeMarkerMenu],
+    [file, booting, getPageNormRect, closeMarkerMenu, closeSelectionMenu],
   );
 
   const openMarkerMenu = useCallback(
@@ -888,7 +983,9 @@ export default function PdfViewer({
       e.preventDefault();
       e.stopPropagation();
       closeContextMenu();
+      closeSelectionMenu();
       closePinEditor();
+      closeWordMarkEditor();
       const menuW = 120;
       const menuH = 48;
       const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
@@ -899,7 +996,7 @@ export default function PdfViewer({
         ...target,
       });
     },
-    [closeContextMenu, closePinEditor],
+    [closeContextMenu, closeSelectionMenu, closePinEditor, closeWordMarkEditor],
   );
 
   const deleteAnnotation = useCallback(async (a: PdfAnnotation) => {
@@ -925,6 +1022,8 @@ export default function PdfViewer({
       }
       const { pageNumber: targetPage, rect } = contextMenu;
       closeContextMenu();
+      closeWordMarkEditor();
+      closeSelectionMenu();
       const label = kind === "question" ? "问题" : "笔记";
       try {
         const res = await fetch(PIN_API[kind], {
@@ -949,13 +1048,116 @@ export default function PdfViewer({
         setError(err instanceof Error ? err.message : `创建${label}失败`);
       }
     },
-    [contextMenu, fileName, closeContextMenu, updatePins],
+    [contextMenu, fileName, closeContextMenu, closeWordMarkEditor, closeSelectionMenu, updatePins],
   );
 
   const openPinEditor = useCallback((kind: PinKind, pin: PdfPin) => {
+    closeWordMarkEditor();
+    closeSelectionMenu();
     setActivePin({ kind, id: pin.id });
     setPinDraft(pin.content ?? "");
-  }, []);
+  }, [closeWordMarkEditor, closeSelectionMenu]);
+
+  const openWordMarkEditor = useCallback(
+    (mark: PdfWordMark) => {
+      closePinEditor();
+      closeSelectionMenu();
+      closeContextMenu();
+      closeMarkerMenu();
+      setActiveWordMarkId(mark.id);
+      setWordMarkDraft(mark.note ?? "");
+    },
+    [closePinEditor, closeSelectionMenu, closeContextMenu, closeMarkerMenu],
+  );
+
+  const handleCreateWordNote = useCallback(async () => {
+    if (!selectionMenu) {
+      closeSelectionMenu();
+      return;
+    }
+    const { info } = selectionMenu;
+    closeSelectionMenu();
+    try {
+      const res = await fetch("/api/pdf/words", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: info.fileName,
+          word: info.word,
+          type: info.type,
+          note: "",
+          pageNumber: info.pageNumber,
+          rect: info.rect,
+          contextBefore: info.contextBefore,
+          contextAfter: info.contextAfter,
+          locator: info.locator,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "创建笔记失败");
+      }
+      const item = data.item as PdfWordMark;
+      setWordMarks((prev) => [item, ...prev.filter((m) => m.id !== item.id)]);
+      openWordMarkEditor(item);
+      onWordMarksChangeRef.current?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建笔记失败");
+    }
+  }, [selectionMenu, closeSelectionMenu, openWordMarkEditor]);
+
+  const saveWordMarkNote = useCallback(async () => {
+    if (activeWordMarkId == null) return;
+    setWordMarkSaving(true);
+    try {
+      const res = await fetch("/api/pdf/words", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: activeWordMarkId,
+          note: wordMarkDraft,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "保存失败");
+      }
+      const item = data.item as PdfWordMark;
+      setWordMarks((prev) => prev.map((m) => (m.id === item.id ? item : m)));
+      closeWordMarkEditor();
+      onWordMarksChangeRef.current?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setWordMarkSaving(false);
+    }
+  }, [activeWordMarkId, wordMarkDraft, closeWordMarkEditor]);
+
+  const deleteWordMark = useCallback(
+    async (mark: PdfWordMark) => {
+      const preview = mark.note.trim()
+        ? `\n「${mark.note.trim().slice(0, 40)}」`
+        : mark.word
+          ? `\n「${mark.word.slice(0, 40)}」`
+          : "";
+      const ok = window.confirm(`确定删除这条选区笔记吗？${preview}`);
+      if (!ok) return;
+
+      closeWordMarkEditor();
+      try {
+        const res = await fetch(`/api/pdf/words?id=${mark.id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "删除失败");
+        }
+        setWordMarks((prev) => prev.filter((row) => row.id !== mark.id));
+        onWordMarksChangeRef.current?.();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "删除失败");
+      }
+    },
+    [closeWordMarkEditor],
+  );
 
   const savePinContent = useCallback(async () => {
     if (!activePin) return;
@@ -1046,7 +1248,9 @@ export default function PdfViewer({
       e.stopPropagation();
       closeContextMenu();
       closeMarkerMenu();
+      closeSelectionMenu();
       closePinEditor();
+      closeWordMarkEditor();
       pinDragRef.current = {
         kind,
         id: pin.id,
@@ -1063,7 +1267,7 @@ export default function PdfViewer({
       setDraggingPin({ kind, id: pin.id });
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [closeContextMenu, closeMarkerMenu, closePinEditor],
+    [closeContextMenu, closeMarkerMenu, closeSelectionMenu, closePinEditor, closeWordMarkEditor],
   );
 
   const onPinPointerMove = useCallback(
@@ -1151,6 +1355,28 @@ export default function PdfViewer({
   }, [contextMenu, closeContextMenu]);
 
   useEffect(() => {
+    if (!selectionMenu) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (selectionMenuRef.current?.contains(e.target as Node)) return;
+      closeSelectionMenu();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSelectionMenu();
+    };
+    const onScroll = () => closeSelectionMenu();
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [selectionMenu, closeSelectionMenu]);
+
+  useEffect(() => {
     if (!markerMenu) return;
 
     const onPointerDown = (e: PointerEvent) => {
@@ -1194,13 +1420,43 @@ export default function PdfViewer({
   }, [activePin, closePinEditor]);
 
   useEffect(() => {
+    if (activeWordMarkId == null) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (wordMarkEditorRef.current?.contains(target)) return;
+      if ((target as Element).closest?.("[data-word-mark]")) return;
+      closeWordMarkEditor();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeWordMarkEditor();
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeWordMarkId, closeWordMarkEditor]);
+
+  useEffect(() => {
     closeContextMenu();
     closeMarkerMenu();
+    closeSelectionMenu();
     closePinEditor();
+    closeWordMarkEditor();
     setDraftArrow(null);
     setSelectedAnnotationId(null);
     arrowStrokeRef.current = null;
-  }, [pageNumber, closeContextMenu, closeMarkerMenu, closePinEditor]);
+  }, [
+    pageNumber,
+    closeContextMenu,
+    closeMarkerMenu,
+    closeSelectionMenu,
+    closePinEditor,
+    closeWordMarkEditor,
+  ]);
 
   useEffect(() => {
     if (!drawTool) return;
@@ -1281,11 +1537,24 @@ export default function PdfViewer({
     [annotations, pageNumber],
   );
 
+  const pageWordMarks = useMemo(
+    () =>
+      wordMarks.filter(
+        (m) => m.pageNumber === pageNumber && m.note.trim().length > 0,
+      ),
+    [wordMarks, pageNumber],
+  );
+
   const activePinItem = useMemo(() => {
     if (!activePin) return null;
     const list = activePin.kind === "question" ? questions : notes;
     return list.find((p) => p.id === activePin.id) ?? null;
   }, [activePin, questions, notes]);
+
+  const activeWordMarkItem = useMemo(() => {
+    if (activeWordMarkId == null) return null;
+    return wordMarks.find((m) => m.id === activeWordMarkId) ?? null;
+  }, [activeWordMarkId, wordMarks]);
 
   return (
     <div ref={rootRef} className="space-y-4">
@@ -1550,6 +1819,35 @@ export default function PdfViewer({
                     }}
                   />
                 ) : null}
+                {pageWordMarks.map((m) => {
+                  const isActive = activeWordMarkId === m.id;
+                  return (
+                    <button
+                      key={`wm-${m.id}`}
+                      type="button"
+                      data-word-mark
+                      data-word-mark-id={m.id}
+                      aria-label={m.note ? `选区笔记：${m.note}` : `选区笔记：${m.word}`}
+                      title={m.note || m.word}
+                      className={`absolute z-[15] cursor-pointer border-0 p-0 ${
+                        isActive
+                          ? "bg-[#fbbf24]/70 ring-2 ring-[#d97706]"
+                          : "bg-[#fbbf24]/55 ring-1 ring-[#d97706]/80 hover:bg-[#fbbf24]/70"
+                      }`}
+                      style={{
+                        left: `${m.rectLeft * 100}%`,
+                        top: `${m.rectTop * 100}%`,
+                        width: `${Math.max(m.rectWidth, 0.01) * 100}%`,
+                        height: `${Math.max(m.rectHeight, 0.008) * 100}%`,
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openWordMarkEditor(m);
+                      }}
+                    />
+                  );
+                })}
                 {pageQuestions.map((q) => {
                   const isDragging =
                     draggingPin?.kind === "question" && draggingPin.id === q.id;
@@ -1685,11 +1983,85 @@ export default function PdfViewer({
                     </div>
                   </div>
                 ) : null}
+                {activeWordMarkItem && activeWordMarkItem.pageNumber === pageNumber ? (
+                  <div
+                    ref={wordMarkEditorRef}
+                    className="absolute z-40 w-56 border border-[#d6d3d1] bg-[#faf8f4] p-2 shadow-md"
+                    style={{
+                      left: `${Math.min(
+                        (activeWordMarkItem.rectLeft + activeWordMarkItem.rectWidth) * 100,
+                        72,
+                      )}%`,
+                      top: `${activeWordMarkItem.rectTop * 100}%`,
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <p className="mb-1 text-xs text-[#78716c]">
+                      {activeWordMarkItem.type === "sentence" ? "句子" : "单词"} ·{" "}
+                      {activeWordMarkItem.word.slice(0, 24)}
+                      {activeWordMarkItem.word.length > 24 ? "…" : ""} · 第{" "}
+                      {activeWordMarkItem.pageNumber} 页
+                    </p>
+                    <textarea
+                      value={wordMarkDraft}
+                      onChange={(e) => setWordMarkDraft(e.target.value)}
+                      rows={3}
+                      placeholder="输入笔记…"
+                      className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
+                      autoFocus
+                    />
+                    <div className="mt-1.5 flex items-center justify-between gap-1.5">
+                      <button
+                        type="button"
+                        disabled={wordMarkSaving}
+                        onClick={() => void deleteWordMark(activeWordMarkItem)}
+                        className="px-2 py-1 text-xs text-[#b91c1c] hover:bg-[#fee2e2] disabled:opacity-50"
+                      >
+                        删除
+                      </button>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={closeWordMarkEditor}
+                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          disabled={wordMarkSaving}
+                          onClick={() => void saveWordMarkNote()}
+                          className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+                        >
+                          {wordMarkSaving ? "保存中…" : "保存"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </Document>
           </div>
         )}
       </div>
+
+      {selectionMenu ? (
+        <div
+          ref={selectionMenuRef}
+          role="menu"
+          className="fixed z-50 min-w-[5.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
+          style={{ left: selectionMenu.x, top: selectionMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+            onClick={() => void handleCreateWordNote()}
+          >
+            笔记
+          </button>
+        </div>
+      ) : null}
 
       {contextMenu ? (
         <div

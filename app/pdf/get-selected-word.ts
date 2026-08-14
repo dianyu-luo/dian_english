@@ -25,6 +25,7 @@ export type PdfWordRect = {
 export type PdfWordSelectInfo = {
   word: string;
   raw: string;
+  type: "word" | "sentence";
   pageNumber: number;
   fileName: string;
   /** 相对页面宽高的比例坐标，方便下次定位 */
@@ -38,6 +39,11 @@ export type PdfWordSelectInfo = {
 };
 
 export type OnPdfWordSelect = (info: PdfWordSelectInfo) => void;
+
+/** 无空白 → 单词；含空白 → 句子 */
+export function selectionTypeFromRaw(raw: string): "word" | "sentence" {
+  return /\s/.test(raw.trim()) ? "sentence" : "word";
+}
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
@@ -81,12 +87,12 @@ function getSelectionContext(range: Range, pageEl: HTMLElement, radius = 40) {
   }
 }
 
-export function buildWordLocator(info: Omit<PdfWordSelectInfo, "locator" | "pixelRect">): string {
+export function buildWordLocator(info: Omit<PdfWordSelectInfo, "locator" | "pixelRect" | "raw"> & { raw?: string }): string {
   return JSON.stringify({
     fileName: info.fileName,
     pageNumber: info.pageNumber,
     word: info.word,
-    raw: info.raw,
+    type: info.type,
     rect: info.rect,
     contextBefore: info.contextBefore,
     contextAfter: info.contextAfter,
@@ -103,7 +109,11 @@ export function getSelectedWordInfo(options: {
     options.selection ?? (typeof window !== "undefined" ? window.getSelection() : null);
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
 
-  const word = getSelectedWord(sel);
+  const raw = sel.toString().replace(/\s+/g, " ").trim();
+  if (!raw) return null;
+
+  const type = selectionTypeFromRaw(raw);
+  const word = type === "word" ? getSelectedWord(sel) ?? raw : raw;
   if (!word) return null;
 
   const range = sel.getRangeAt(0);
@@ -127,11 +137,11 @@ export function getSelectedWordInfo(options: {
     height: round4(pixelRect.height / pageBox.height),
   };
 
-  const raw = sel.toString().replace(/\s+/g, " ").trim();
   const { before, after } = getSelectionContext(range, pageEl);
   const base = {
     word,
     raw,
+    type,
     pageNumber: options.pageNumber,
     fileName: options.fileName,
     rect,

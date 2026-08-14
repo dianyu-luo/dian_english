@@ -28,12 +28,13 @@ export const pdfRecentReads = sqliteTable("pdf_recent_reads", {
     .$defaultFn(() => new Date()),
 });
 
-/** PDF 选中单词的定位记录，便于下次找回 */
+/** PDF 选区笔记：单词 / 句子定位 + 笔记 */
 export const pdfWordMarks = sqliteTable("pdf_word_marks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   fileName: text("file_name").notNull(),
   word: text("word").notNull(),
-  raw: text("raw").notNull(),
+  type: text("type").notNull(),
+  note: text("note").notNull().default(""),
   pageNumber: integer("page_number").notNull(),
   rectLeft: real("rect_left").notNull(),
   rectTop: real("rect_top").notNull(),

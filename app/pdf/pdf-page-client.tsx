@@ -19,7 +19,8 @@ type SavedMark = {
   id: number;
   fileName: string;
   word: string;
-  raw: string;
+  type: "word" | "sentence" | string;
+  note: string;
   pageNumber: number;
   rectLeft: number;
   rectTop: number;
@@ -37,15 +38,19 @@ type RecentItem = {
   url: string;
 };
 
-/** 无空白 → 单词；含空白 → 句子 */
-function isWordSelection(raw: string) {
-  return !/\s/.test(raw.trim());
+function typeLabel(type: string) {
+  return type === "sentence" ? "句子" : "单词";
+}
+
+function noteSnippet(note: string, max = 36) {
+  const t = note.trim();
+  if (!t) return "";
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 export default function PdfPageClient() {
   const [selected, setSelected] = useState<PdfWordSelectInfo | null>(null);
   const [saveMessage, setSaveMessage] = useState("");
-  const [saving, setSaving] = useState(false);
   const [marks, setMarks] = useState<SavedMark[]>([]);
   const [recent, setRecent] = useState<RecentItem | null>(null);
   const [jumpRequest, setJumpRequest] = useState<PdfJumpRequest | null>(null);
@@ -60,63 +65,24 @@ export default function PdfPageClient() {
   }, []);
 
   useEffect(() => {
-    void loadMarks();
-  }, [loadMarks]);
+    void loadMarks(recent?.fileName);
+  }, [loadMarks, recent?.fileName]);
 
-  const handleWordSelect = useCallback(
-    async (info: PdfWordSelectInfo) => {
-      setSelected(info);
-      setSaving(true);
-      setSaveMessage("");
+  const handleWordSelect = useCallback(async (info: PdfWordSelectInfo) => {
+    setSelected(info);
+    setSaveMessage("");
 
-      // 含空白 → 视为句子，只复制全文；单 token → 单词，写入 pdf_word_marks
-      const isWord = isWordSelection(info.raw);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(info.word);
+      copied = true;
+    } catch {
+      // 剪贴板权限不可用时忽略
+    }
 
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(isWord ? info.word : info.raw);
-        copied = true;
-      } catch {
-        // 剪贴板权限不可用时忽略
-      }
-
-      if (!isWord) {
-        setSaveMessage(copied ? "已复制句子" : "复制失败");
-        setSaving(false);
-        return;
-      }
-
-      try {
-        const res = await fetch("/api/pdf/words", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fileName: info.fileName,
-            word: info.word,
-            raw: info.raw,
-            pageNumber: info.pageNumber,
-            rect: info.rect,
-            contextBefore: info.contextBefore,
-            contextAfter: info.contextAfter,
-            locator: info.locator,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error ?? "保存失败");
-        }
-        const savePart =
-          data.created === false ? `已更新 #${data.item.id}` : `已保存 #${data.item.id}`;
-        setSaveMessage(copied ? `已复制 · ${savePart}` : savePart);
-        await loadMarks(info.fileName);
-      } catch (err) {
-        setSaveMessage(err instanceof Error ? err.message : "保存失败");
-      } finally {
-        setSaving(false);
-      }
-    },
-    [loadMarks],
-  );
+    const kind = info.type === "sentence" ? "句子" : "单词";
+    setSaveMessage(copied ? `已复制${kind}` : "复制失败");
+  }, []);
 
   const handleMarkClick = useCallback((m: SavedMark) => {
     setJumpRequest({
@@ -148,7 +114,7 @@ export default function PdfPageClient() {
         <section className="mb-6 space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">PDF 阅读</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            选中单词会写入数据库；选中句子只复制到剪贴板。点击下方标记可跳转到对应位置并高亮。
+            选中后弹出笔记菜单；有笔记会高亮。点击下方标记可跳转到对应位置并高亮。
           </p>
           {recent ? (
             <p className="text-sm text-[#57534e]">
@@ -160,26 +126,20 @@ export default function PdfPageClient() {
           {selected ? (
             <div className="space-y-1 text-sm text-[#57534e]">
               <p>
-                {isWordSelection(selected.raw) ? "选中单词：" : "选中句子："}
-                <span className="font-medium text-[#1c1917]">
-                  {isWordSelection(selected.raw) ? selected.word : selected.raw}
-                </span>
+                {selected.type === "sentence" ? "选中句子：" : "选中单词："}
+                <span className="font-medium text-[#1c1917]">{selected.word}</span>
                 <span className="text-[#a8a29e]">
                   {" "}
                   · {selected.fileName} · 第 {selected.pageNumber} 页
                 </span>
-                {saving ? (
-                  <span className="text-[#a8a29e]"> · 保存中…</span>
-                ) : saveMessage ? (
+                {saveMessage ? (
                   <span className="text-[#57534e]"> · {saveMessage}</span>
                 ) : null}
               </p>
-              {isWordSelection(selected.raw) ? (
-                <p className="font-mono text-xs text-[#78716c]">
-                  rect: {selected.rect.left.toFixed(3)}, {selected.rect.top.toFixed(3)},{" "}
-                  {selected.rect.width.toFixed(3)}×{selected.rect.height.toFixed(3)}
-                </p>
-              ) : null}
+              <p className="font-mono text-xs text-[#78716c]">
+                rect: {selected.rect.left.toFixed(3)}, {selected.rect.top.toFixed(3)},{" "}
+                {selected.rect.width.toFixed(3)}×{selected.rect.height.toFixed(3)}
+              </p>
             </div>
           ) : null}
         </section>
@@ -187,6 +147,7 @@ export default function PdfPageClient() {
         <PdfViewer
           onWordSelect={handleWordSelect}
           onRecentChange={setRecent}
+          onWordMarksChange={() => void loadMarks(recent?.fileName)}
           jumpRequest={jumpRequest}
         />
 
@@ -194,24 +155,27 @@ export default function PdfPageClient() {
           <section className="mt-8 space-y-3 border-t border-[#d6d3d1] pt-6">
             <h2 className="text-lg font-medium">已保存标记</h2>
             <ul className="space-y-2 text-sm text-[#57534e]">
-              {marks.slice(0, 20).map((m) => (
-                <li key={m.id} className="border-b border-[#e7e2d9] pb-2">
-                  <button
-                    type="button"
-                    onClick={() => handleMarkClick(m)}
-                    className="w-full text-left transition-colors hover:text-[#1c1917]"
-                  >
-                    <span className="font-medium text-[#1c1917] underline-offset-2 hover:underline">
-                      {m.word}
-                    </span>
-                    <span className="text-[#a8a29e]">
-                      {" "}
-                      · #{m.id} · {m.fileName} · 第 {m.pageNumber} 页 · (
-                      {m.rectLeft.toFixed(3)}, {m.rectTop.toFixed(3)})
-                    </span>
-                  </button>
-                </li>
-              ))}
+              {marks.slice(0, 20).map((m) => {
+                const snippet = noteSnippet(m.note);
+                return (
+                  <li key={m.id} className="border-b border-[#e7e2d9] pb-2">
+                    <button
+                      type="button"
+                      onClick={() => handleMarkClick(m)}
+                      className="w-full text-left transition-colors hover:text-[#1c1917]"
+                    >
+                      <span className="font-medium text-[#1c1917] underline-offset-2 hover:underline">
+                        {m.word}
+                      </span>
+                      <span className="text-[#a8a29e]">
+                        {" "}
+                        · {typeLabel(m.type)} · #{m.id} · {m.fileName} · 第 {m.pageNumber} 页
+                        {snippet ? ` · ${snippet}` : ""}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ) : null}
