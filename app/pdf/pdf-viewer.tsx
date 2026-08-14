@@ -59,12 +59,6 @@ type ContextMenuState = {
   rect: PdfHighlightRect;
 };
 
-type MarkerMenuState = {
-  x: number;
-  y: number;
-  question: PdfQuestion;
-};
-
 type PdfAnnotation = {
   id: number;
   fileName: string;
@@ -78,7 +72,13 @@ type PdfAnnotation = {
   strokeWidth: number;
 };
 
+type MarkerMenuState =
+  | { x: number; y: number; kind: "question"; question: PdfQuestion }
+  | { x: number; y: number; kind: "arrow"; annotation: PdfAnnotation };
+
 type DrawTool = "arrow" | null;
+
+type AnnotateToolId = "arrow" | "circle" | "rect";
 
 type NormPoint = { x: number; y: number };
 
@@ -86,6 +86,7 @@ const QUESTION_MARKER_PX = 28;
 const ARROW_COLOR = "#dc2626";
 const ARROW_STROKE_WIDTH = 2.5;
 const MIN_ARROW_DRAG_PX = 6;
+const LAST_ANNOTATE_TOOL_KEY = "pdf-last-annotate-tool";
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
@@ -93,6 +94,24 @@ function round4(n: number) {
 
 function clamp01(n: number) {
   return Math.min(1, Math.max(0, n));
+}
+
+function readLastAnnotateTool(): AnnotateToolId | null {
+  try {
+    const value = localStorage.getItem(LAST_ANNOTATE_TOOL_KEY);
+    if (value === "arrow" || value === "circle" || value === "rect") return value;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function writeLastAnnotateTool(tool: AnnotateToolId) {
+  try {
+    localStorage.setItem(LAST_ANNOTATE_TOOL_KEY, tool);
+  } catch {
+    // ignore
+  }
 }
 
 function AnnotateArrowIcon() {
@@ -141,6 +160,10 @@ function ArrowMarkup({
   color,
   strokeWidth,
   markerId,
+  selected = false,
+  interactive = false,
+  onSelect,
+  onMenu,
 }: {
   x1: number;
   y1: number;
@@ -149,18 +172,67 @@ function ArrowMarkup({
   color: string;
   strokeWidth: number;
   markerId: string;
+  selected?: boolean;
+  interactive?: boolean;
+  onSelect?: () => void;
+  onMenu?: (e: MouseEvent) => void;
 }) {
+  const x1p = `${x1 * 100}%`;
+  const y1p = `${y1 * 100}%`;
+  const x2p = `${x2 * 100}%`;
+  const y2p = `${y2 * 100}%`;
+
   return (
-    <line
-      x1={`${x1 * 100}%`}
-      y1={`${y1 * 100}%`}
-      x2={`${x2 * 100}%`}
-      y2={`${y2 * 100}%`}
-      stroke={color}
-      strokeWidth={strokeWidth}
-      strokeLinecap="round"
-      markerEnd={`url(#${markerId})`}
-    />
+    <g>
+      {interactive ? (
+        <line
+          x1={x1p}
+          y1={y1p}
+          x2={x2p}
+          y2={y2p}
+          stroke="transparent"
+          strokeWidth={Math.max(14, strokeWidth + 10)}
+          strokeLinecap="round"
+          className="cursor-pointer"
+          data-arrow-hit=""
+          style={{ pointerEvents: "stroke" }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSelect?.();
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSelect?.();
+            onMenu?.(e);
+          }}
+        />
+      ) : null}
+      {selected ? (
+        <line
+          x1={x1p}
+          y1={y1p}
+          x2={x2p}
+          y2={y2p}
+          stroke="#fecaca"
+          strokeWidth={strokeWidth + 5}
+          strokeLinecap="round"
+          style={{ pointerEvents: "none" }}
+        />
+      ) : null}
+      <line
+        x1={x1p}
+        y1={y1p}
+        x2={x2p}
+        y2={y2p}
+        stroke={selected ? "#b91c1c" : color}
+        strokeWidth={selected ? strokeWidth + 0.5 : strokeWidth}
+        strokeLinecap="round"
+        markerEnd={`url(#${markerId})`}
+        style={{ pointerEvents: "none" }}
+      />
+    </g>
   );
 }
 
@@ -200,6 +272,7 @@ export default function PdfViewer({
   const [pageInput, setPageInput] = useState("1");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [annotateSubmenuOpen, setAnnotateSubmenuOpen] = useState(false);
+  const [lastAnnotateTool, setLastAnnotateTool] = useState<AnnotateToolId | null>(null);
   const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
   const [questions, setQuestions] = useState<PdfQuestion[]>([]);
   const [activeQuestionId, setActiveQuestionId] = useState<number | null>(null);
@@ -208,6 +281,7 @@ export default function PdfViewer({
   const [draggingQuestionId, setDraggingQuestionId] = useState<number | null>(null);
   const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
   const [drawTool, setDrawTool] = useState<DrawTool>(null);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | null>(null);
   const [draftArrow, setDraftArrow] = useState<{
     x1: number;
     y1: number;
@@ -247,6 +321,10 @@ export default function PdfViewer({
   const restorePageRef = useRef<number | null>(null);
   const skipPersistRef = useRef(true);
   const highlightTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setLastAnnotateTool(readLastAnnotateTool());
+  }, []);
 
   const centerHighlight = useCallback(() => {
     const el = highlightRef.current;
@@ -583,6 +661,7 @@ export default function PdfViewer({
     closeQuestionEditor();
     setDrawTool(null);
     setDraftArrow(null);
+    setSelectedAnnotationId(null);
     arrowStrokeRef.current = null;
   }, [fileName, loadQuestions, loadAnnotations, closeQuestionEditor]);
 
@@ -624,10 +703,25 @@ export default function PdfViewer({
     closeContextMenu();
     closeQuestionEditor();
     closeMarkerMenu();
+    setSelectedAnnotationId(null);
     setDraftArrow(null);
     arrowStrokeRef.current = null;
     setDrawTool("arrow");
   }, [closeContextMenu, closeQuestionEditor, closeMarkerMenu]);
+
+  const selectAnnotateTool = useCallback(
+    (tool: AnnotateToolId) => {
+      setLastAnnotateTool(tool);
+      writeLastAnnotateTool(tool);
+      if (tool === "arrow") {
+        startArrowTool();
+        return;
+      }
+      // 圆形 / 矩形绘制后续接入
+      closeContextMenu();
+    },
+    [startArrowTool, closeContextMenu],
+  );
 
   const cancelDrawTool = useCallback(() => {
     setDrawTool(null);
@@ -748,7 +842,7 @@ export default function PdfViewer({
   );
 
   const openMarkerMenu = useCallback(
-    (e: MouseEvent, q: PdfQuestion) => {
+    (e: MouseEvent, target: { kind: "question"; question: PdfQuestion } | { kind: "arrow"; annotation: PdfAnnotation }) => {
       e.preventDefault();
       e.stopPropagation();
       closeContextMenu();
@@ -760,11 +854,26 @@ export default function PdfViewer({
       setMarkerMenu({
         x: Math.max(8, x),
         y: Math.max(8, y),
-        question: q,
+        ...target,
       });
     },
     [closeContextMenu, closeQuestionEditor],
   );
+
+  const deleteAnnotation = useCallback(async (a: PdfAnnotation) => {
+    closeMarkerMenu();
+    try {
+      const res = await fetch(`/api/pdf/annotations?id=${a.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "删除失败");
+      }
+      setAnnotations((prev) => prev.filter((row) => row.id !== a.id));
+      setSelectedAnnotationId((id) => (id === a.id ? null : id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
+    }
+  }, [closeMarkerMenu]);
 
   const handleAddQuestion = useCallback(async () => {
     if (!contextMenu || !fileName) {
@@ -1032,6 +1141,7 @@ export default function PdfViewer({
     closeMarkerMenu();
     closeQuestionEditor();
     setDraftArrow(null);
+    setSelectedAnnotationId(null);
     arrowStrokeRef.current = null;
   }, [pageNumber, closeContextMenu, closeMarkerMenu, closeQuestionEditor]);
 
@@ -1043,6 +1153,43 @@ export default function PdfViewer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [drawTool, cancelDrawTool]);
+
+  useEffect(() => {
+    if (selectedAnnotationId == null || drawTool) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      if (markerMenuRef.current?.contains(target)) return;
+      if (target.closest?.("[data-arrow-hit]")) return;
+      setSelectedAnnotationId(null);
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [selectedAnnotationId, drawTool]);
+
+  useEffect(() => {
+    if (selectedAnnotationId == null || drawTool) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedAnnotationId(null);
+        return;
+      }
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+      const annotation = annotations.find((a) => a.id === selectedAnnotationId);
+      if (annotation) void deleteAnnotation(annotation);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedAnnotationId, drawTool, annotations, deleteAnnotation]);
 
   const contextMenuItems = [
     { id: "annotate", label: "标注" },
@@ -1194,6 +1341,10 @@ export default function PdfViewer({
           <div className="absolute top-2 left-1/2 z-40 -translate-x-1/2 border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-xs text-[#b91c1c] shadow-sm">
             绘制箭头：按住拖动 · Esc 取消
           </div>
+        ) : selectedAnnotationId != null ? (
+          <div className="absolute top-2 left-1/2 z-40 -translate-x-1/2 border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-xs text-[#b91c1c] shadow-sm">
+            已选中箭头 · 右键删除 / Delete · Esc 取消选中
+          </div>
         ) : null}
         {file && !booting ? (
           <>
@@ -1252,7 +1403,6 @@ export default function PdfViewer({
                 />
                 <svg
                   className="pointer-events-none absolute inset-0 z-[25] h-full w-full overflow-visible"
-                  aria-hidden
                 >
                   <defs>
                     <marker
@@ -1266,6 +1416,17 @@ export default function PdfViewer({
                     >
                       <path d="M0,0 L8,4 L0,8 Z" fill={ARROW_COLOR} />
                     </marker>
+                    <marker
+                      id="pdf-arrow-head-selected"
+                      markerWidth="8"
+                      markerHeight="8"
+                      refX="7"
+                      refY="4"
+                      orient="auto"
+                      markerUnits="strokeWidth"
+                    >
+                      <path d="M0,0 L8,4 L0,8 Z" fill="#b91c1c" />
+                    </marker>
                   </defs>
                   {pageArrows.map((a) => (
                     <ArrowMarkup
@@ -1276,7 +1437,15 @@ export default function PdfViewer({
                       y2={a.y2}
                       color={a.color || ARROW_COLOR}
                       strokeWidth={a.strokeWidth || ARROW_STROKE_WIDTH}
-                      markerId="pdf-arrow-head"
+                      markerId={
+                        selectedAnnotationId === a.id ? "pdf-arrow-head-selected" : "pdf-arrow-head"
+                      }
+                      selected={selectedAnnotationId === a.id}
+                      interactive={!drawTool}
+                      onSelect={() => setSelectedAnnotationId(a.id)}
+                      onMenu={(e) =>
+                        openMarkerMenu(e, { kind: "arrow", annotation: a })
+                      }
                     />
                   ))}
                   {draftArrow ? (
@@ -1348,7 +1517,7 @@ export default function PdfViewer({
                       e.preventDefault();
                       e.stopPropagation();
                     }}
-                    onContextMenu={(e) => openMarkerMenu(e, q)}
+                    onContextMenu={(e) => openMarkerMenu(e, { kind: "question", question: q })}
                   >
                     ?
                   </button>
@@ -1420,9 +1589,28 @@ export default function PdfViewer({
                   aria-haspopup="menu"
                   aria-expanded={annotateSubmenuOpen}
                   className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                  onClick={() => setAnnotateSubmenuOpen((open) => !open)}
+                  onClick={() => {
+                    if (lastAnnotateTool) {
+                      selectAnnotateTool(lastAnnotateTool);
+                      return;
+                    }
+                    setAnnotateSubmenuOpen(true);
+                  }}
                 >
-                  <span>{item.label}</span>
+                  <span className="flex items-center gap-2">
+                    <span>{item.label}</span>
+                    {lastAnnotateTool ? (
+                      <span className="inline-flex text-[#78716c]" title="上次工具" aria-hidden>
+                        {lastAnnotateTool === "arrow" ? (
+                          <AnnotateArrowIcon />
+                        ) : lastAnnotateTool === "circle" ? (
+                          <AnnotateCircleIcon />
+                        ) : (
+                          <AnnotateRectIcon />
+                        )}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="text-[#a8a29e]" aria-hidden>
                     ›
                   </span>
@@ -1436,6 +1624,7 @@ export default function PdfViewer({
                   >
                     {annotateSubmenuItems.map((sub) => {
                       const Icon = sub.Icon;
+                      const active = lastAnnotateTool === sub.id;
                       return (
                         <button
                           key={sub.id}
@@ -1443,14 +1632,11 @@ export default function PdfViewer({
                           role="menuitem"
                           title={sub.label}
                           aria-label={sub.label}
-                          className="flex h-8 w-8 items-center justify-center text-[#1c1917] hover:bg-[#efebe4]"
-                          onClick={() => {
-                            if (sub.id === "arrow") {
-                              startArrowTool();
-                              return;
-                            }
-                            closeContextMenu();
-                          }}
+                          aria-current={active ? "true" : undefined}
+                          className={`flex h-8 w-8 items-center justify-center text-[#1c1917] hover:bg-[#efebe4] ${
+                            active ? "bg-[#efebe4] ring-1 ring-inset ring-[#a8a29e]" : ""
+                          }`}
+                          onClick={() => selectAnnotateTool(sub.id)}
                         >
                           <Icon />
                         </button>
@@ -1492,9 +1678,15 @@ export default function PdfViewer({
             role="menuitem"
             className="block w-full px-3 py-1.5 text-left text-sm text-[#b91c1c] hover:bg-[#fee2e2]"
             onClick={() => {
-              const q = markerMenu.question;
+              if (markerMenu.kind === "question") {
+                const q = markerMenu.question;
+                closeMarkerMenu();
+                void deleteQuestion(q);
+                return;
+              }
+              const a = markerMenu.annotation;
               closeMarkerMenu();
-              void deleteQuestion(q);
+              void deleteAnnotation(a);
             }}
           >
             删除
