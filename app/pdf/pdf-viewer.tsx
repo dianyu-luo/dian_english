@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -75,10 +75,12 @@ export default function PdfViewer({
     (PdfHighlightRect & { word: string; pageNumber: number }) | null
   >(null);
   const [pageInput, setPageInput] = useState("1");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
   const pageNumberRef = useRef(pageNumber);
@@ -374,6 +376,53 @@ export default function PdfViewer({
     }
   }, [centerHighlight]);
 
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const onPdfContextMenu = useCallback(
+    (e: MouseEvent) => {
+      if (!file || booting) return;
+      e.preventDefault();
+      const menuW = 140;
+      const menuH = 120;
+      const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+      const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+      setContextMenu({ x: Math.max(8, x), y: Math.max(8, y) });
+    },
+    [file, booting],
+  );
+
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (contextMenuRef.current?.contains(e.target as Node)) return;
+      closeContextMenu();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeContextMenu();
+    };
+    const onScroll = () => closeContextMenu();
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [contextMenu, closeContextMenu]);
+
+  useEffect(() => {
+    closeContextMenu();
+  }, [pageNumber, file, closeContextMenu]);
+
+  const contextMenuItems = [
+    { id: "annotate", label: "标注" },
+    { id: "question", label: "问题" },
+    { id: "help", label: "帮助" },
+  ] as const;
+
   return (
     <div ref={rootRef} className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 border border-[#e7e2d9] bg-[#faf8f4] px-3 py-2">
@@ -469,6 +518,7 @@ export default function PdfViewer({
 
       <div
         ref={containerRef}
+        onContextMenu={onPdfContextMenu}
         onDragEnter={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -560,6 +610,27 @@ export default function PdfViewer({
           </div>
         )}
       </div>
+
+      {contextMenu ? (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          className="fixed z-50 min-w-[8.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {contextMenuItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+              onClick={closeContextMenu}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
     </div>
