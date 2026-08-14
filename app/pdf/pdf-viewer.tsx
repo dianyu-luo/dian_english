@@ -609,7 +609,7 @@ export default function PdfViewer({
       {
       // 句子：出现在鼠标附近
       preferX = e.clientX + 8;
-      preferY = e.clientY + 8;
+      preferY = e.clientY + 18;
     }
 
     const x = Math.min(Math.max(8, preferX), window.innerWidth - menuW - 8);
