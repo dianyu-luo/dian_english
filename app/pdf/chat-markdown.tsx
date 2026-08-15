@@ -1,31 +1,64 @@
 "use client";
 
 import katex from "katex";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import type { Components } from "react-markdown";
-// KaTeX CSS 在 globals.css 中统一引入，避免版本/顺序冲突
+// KaTeX CSS 在 globals.css 中统一引入
 
-function renderKatex(tex: string, displayMode: boolean) {
+function MathFormula({ tex, displayMode }: { tex: string; displayMode: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  let html = "";
   try {
-    const html = katex.renderToString(tex, {
+    html = katex.renderToString(tex, {
       throwOnError: false,
       displayMode,
       strict: "ignore",
       output: "html",
     });
-    return (
-      <span
-        className={displayMode ? "katex-display-wrap my-2 block overflow-x-auto" : "katex-inline-wrap"}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    );
   } catch {
     return <code className="font-mono text-[12px]">{tex}</code>;
   }
+
+  const copyLatex = async () => {
+    const payload = displayMode ? `$$${tex}$$` : `$${tex}$`;
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <span
+      className={`group/math relative ${
+        displayMode ? "katex-display-wrap my-2 block" : "katex-inline-wrap inline-block max-w-full align-middle"
+      }`}
+    >
+      <span
+        className={displayMode ? "block overflow-x-auto overflow-y-hidden" : undefined}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void copyLatex();
+        }}
+        title="复制 LaTeX"
+        aria-label="复制 LaTeX"
+        className="absolute top-0 right-0 z-10 border border-[#d6d3d1] bg-white/95 px-1.5 py-0.5 text-[10px] leading-none text-[#57534e] shadow-sm opacity-0 transition-opacity group-hover/math:opacity-100 hover:bg-[#f6f4ef] hover:text-[#1c1917] focus-visible:opacity-100"
+      >
+        {copied ? "已复制" : "复制"}
+      </button>
+    </span>
+  );
 }
 
 function extractText(children: ReactNode): string {
@@ -85,13 +118,12 @@ const components: Components = {
     if (isMathClass(cls)) {
       const display =
         cls.includes("math-display") || /language-(?:latex|tex|katex)(?:\s|$)/.test(cls);
-      return renderKatex(text, display);
+      return <MathFormula tex={text} displayMode={display} />;
     }
 
-    // 行内代码其实是 `$...$` / `$$...$$`
     const dollar = text.match(/^\$\$([\s\S]+)\$\$$/) ?? text.match(/^\$([^$]+)\$$/);
     if (dollar) {
-      return renderKatex(dollar[1].trim(), text.startsWith("$$"));
+      return <MathFormula tex={dollar[1].trim()} displayMode={text.startsWith("$$")} />;
     }
 
     const isBlock = cls.includes("language-");
@@ -108,7 +140,7 @@ const components: Components = {
     const text = extractText(children).replace(/\n$/, "").trim();
     const dollar = text.match(/^\$\$([\s\S]+)\$\$$/) ?? text.match(/^\$([^$]+)\$$/);
     if (dollar) {
-      return renderKatex(dollar[1].trim(), true);
+      return <MathFormula tex={dollar[1].trim()} displayMode />;
     }
 
     const childList = Array.isArray(children) ? children : [children];
@@ -144,13 +176,9 @@ const components: Components = {
 function unwrapMathFromCode(src: string) {
   let out = src;
 
-  // 行内 ` $...$ `
   out = out.replace(/`(\$\$[^`]+\$\$|\$[^`$]+\$)`/g, "$1");
-
-  // 缩进代码块里的单行公式
   out = out.replace(/(^|\n)(?: {4}|\t)(\$\$[^$\n]+\$\$|\$[^$\n]+\$)[ \t]*(?=\n|$)/g, "$1\n$2\n");
 
-  // fenced ``` / ```latex / ```math …
   out = out.replace(/```(?:latex|tex|math|katex)?\s*\n?([\s\S]*?)```/gi, (full, body: string) => {
     const trimmed = body.trim();
     if (!trimmed) return full;
@@ -164,7 +192,6 @@ function unwrapMathFromCode(src: string) {
     if (/^\\\[[\s\S]*\\\]$/.test(trimmed) || /^\\\([\s\S]*\\\)$/.test(trimmed)) {
       return `\n${trimmed}\n`;
     }
-    // 裸 LaTeX（含 ^ _ \cmd 等）
     if (/\\[a-zA-Z]+|\^|_\{/.test(trimmed) && !trimmed.includes("```")) {
       return `\n$$\n${trimmed}\n$$\n`;
     }
@@ -174,7 +201,6 @@ function unwrapMathFromCode(src: string) {
   return out;
 }
 
-/** 把 \( \) / \[ \] 转成 $ / $$ */
 function normalizeLatexDelimiters(src: string) {
   return src
     .replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string) => `\n$$\n${body.trim()}\n$$\n`)
@@ -199,11 +225,7 @@ export function ChatMarkdown({ content, streaming }: ChatMarkdownProps) {
 
   return (
     <div className="chat-md text-sm text-[#292524]">
-      <ReactMarkdown
-        remarkPlugins={[remarkMath, remarkGfm]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore", output: "html" }]]}
-        components={components}
-      >
+      <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} components={components}>
         {markdown}
       </ReactMarkdown>
       {streaming ? (
