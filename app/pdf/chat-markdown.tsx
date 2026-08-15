@@ -1,8 +1,50 @@
 "use client";
 
+import katex from "katex";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import type { Components } from "react-markdown";
+// KaTeX CSS 在 globals.css 中统一引入，避免版本/顺序冲突
+
+function renderKatex(tex: string, displayMode: boolean) {
+  try {
+    const html = katex.renderToString(tex, {
+      throwOnError: false,
+      displayMode,
+      strict: "ignore",
+      output: "html",
+    });
+    return (
+      <span
+        className={displayMode ? "katex-display-wrap my-2 block overflow-x-auto" : "katex-inline-wrap"}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  } catch {
+    return <code className="font-mono text-[12px]">{tex}</code>;
+  }
+}
+
+function extractText(children: ReactNode): string {
+  if (children == null || typeof children === "boolean") return "";
+  if (typeof children === "string" || typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(extractText).join("");
+  if (typeof children === "object" && children && "props" in children) {
+    return extractText((children as { props?: { children?: ReactNode } }).props?.children);
+  }
+  return "";
+}
+
+function isMathClass(cls: string) {
+  return (
+    cls.includes("math-inline") ||
+    cls.includes("math-display") ||
+    /(?:^|\s)language-(?:math|latex|tex|katex)(?:\s|$)/.test(cls)
+  );
+}
 
 const components: Components = {
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
@@ -37,7 +79,22 @@ const components: Components = {
   ),
   hr: () => <hr className="my-3 border-[#e7e2d9]" />,
   code: ({ className, children }) => {
-    const isBlock = typeof className === "string" && className.includes("language-");
+    const text = extractText(children).replace(/\n$/, "");
+    const cls = className ?? "";
+
+    if (isMathClass(cls)) {
+      const display =
+        cls.includes("math-display") || /language-(?:latex|tex|katex)(?:\s|$)/.test(cls);
+      return renderKatex(text, display);
+    }
+
+    // 行内代码其实是 `$...$` / `$$...$$`
+    const dollar = text.match(/^\$\$([\s\S]+)\$\$$/) ?? text.match(/^\$([^$]+)\$$/);
+    if (dollar) {
+      return renderKatex(dollar[1].trim(), text.startsWith("$$"));
+    }
+
+    const isBlock = cls.includes("language-");
     if (isBlock) {
       return <code className="font-mono text-[12px] leading-5 text-[#292524]">{children}</code>;
     }
@@ -47,11 +104,30 @@ const components: Components = {
       </code>
     );
   },
-  pre: ({ children }) => (
-    <pre className="my-2 overflow-x-auto border border-[#e7e2d9] bg-[#f6f4ef] px-2.5 py-2 font-mono text-[12px] leading-5 first:mt-0 last:mb-0">
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => {
+    const text = extractText(children).replace(/\n$/, "").trim();
+    const dollar = text.match(/^\$\$([\s\S]+)\$\$$/) ?? text.match(/^\$([^$]+)\$$/);
+    if (dollar) {
+      return renderKatex(dollar[1].trim(), true);
+    }
+
+    const childList = Array.isArray(children) ? children : [children];
+    const mathChild = childList.find(
+      (c) =>
+        typeof c === "object" &&
+        c &&
+        "props" in c &&
+        typeof (c as { props?: { className?: string } }).props?.className === "string" &&
+        isMathClass((c as { props: { className: string } }).props.className),
+    );
+    if (mathChild) return <>{children}</>;
+
+    return (
+      <pre className="my-2 overflow-x-auto border border-[#e7e2d9] bg-[#f6f4ef] px-2.5 py-2 font-mono text-[12px] leading-5 first:mt-0 last:mb-0">
+        {children}
+      </pre>
+    );
+  },
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
       <table className="w-full border-collapse text-left text-xs">{children}</table>
@@ -64,6 +140,51 @@ const components: Components = {
   ),
 };
 
+/** 模型常把公式塞进代码块；拆出来交给 math 插件 */
+function unwrapMathFromCode(src: string) {
+  let out = src;
+
+  // 行内 ` $...$ `
+  out = out.replace(/`(\$\$[^`]+\$\$|\$[^`$]+\$)`/g, "$1");
+
+  // 缩进代码块里的单行公式
+  out = out.replace(/(^|\n)(?: {4}|\t)(\$\$[^$\n]+\$\$|\$[^$\n]+\$)[ \t]*(?=\n|$)/g, "$1\n$2\n");
+
+  // fenced ``` / ```latex / ```math …
+  out = out.replace(/```(?:latex|tex|math|katex)?\s*\n?([\s\S]*?)```/gi, (full, body: string) => {
+    const trimmed = body.trim();
+    if (!trimmed) return full;
+
+    if (/^\$\$[\s\S]*\$\$$/.test(trimmed)) {
+      return `\n${trimmed}\n`;
+    }
+    if (/^\$[^$]+\$/.test(trimmed) && trimmed.indexOf("$", 1) === trimmed.length - 1) {
+      return `\n$$\n${trimmed.slice(1, -1).trim()}\n$$\n`;
+    }
+    if (/^\\\[[\s\S]*\\\]$/.test(trimmed) || /^\\\([\s\S]*\\\)$/.test(trimmed)) {
+      return `\n${trimmed}\n`;
+    }
+    // 裸 LaTeX（含 ^ _ \cmd 等）
+    if (/\\[a-zA-Z]+|\^|_\{/.test(trimmed) && !trimmed.includes("```")) {
+      return `\n$$\n${trimmed}\n$$\n`;
+    }
+    return full;
+  });
+
+  return out;
+}
+
+/** 把 \( \) / \[ \] 转成 $ / $$ */
+function normalizeLatexDelimiters(src: string) {
+  return src
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string) => `\n$$\n${body.trim()}\n$$\n`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_m, body: string) => `$${body.trim()}$`);
+}
+
+function prepareMarkdown(src: string) {
+  return normalizeLatexDelimiters(unwrapMathFromCode(src));
+}
+
 type ChatMarkdownProps = {
   content: string;
   streaming?: boolean;
@@ -74,10 +195,16 @@ export function ChatMarkdown({ content, streaming }: ChatMarkdownProps) {
     return streaming ? <span className="text-[#a8a29e]">思考中…</span> : null;
   }
 
+  const markdown = prepareMarkdown(content);
+
   return (
-    <div className="chat-md text-sm leading-6 text-[#292524]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {content}
+    <div className="chat-md text-sm text-[#292524]">
+      <ReactMarkdown
+        remarkPlugins={[remarkMath, remarkGfm]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore", output: "html" }]]}
+        components={components}
+      >
+        {markdown}
       </ReactMarkdown>
       {streaming ? (
         <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-[#a8a29e] align-middle" />

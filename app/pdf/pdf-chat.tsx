@@ -292,10 +292,10 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[92%] px-3 py-2 text-sm leading-6 ${
+              className={`max-w-[92%] px-3 py-2 text-sm ${
                 m.role === "user"
-                  ? "whitespace-pre-wrap bg-[#1c1917] text-[#faf8f4]"
-                  : "border border-[#e7e2d9] bg-white text-[#292524]"
+                  ? "leading-6 whitespace-pre-wrap bg-[#1c1917] text-[#faf8f4]"
+                  : "overflow-visible border border-[#e7e2d9] bg-white leading-normal text-[#292524]"
               }`}
             >
               {m.role === "assistant" ? (
