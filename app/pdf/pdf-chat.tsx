@@ -85,12 +85,28 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** 发送后把这条用户消息滚到对话区顶部 */
+  const pinUserIdRef = useRef<string | null>(null);
+  const userBubbleRefs = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, sending, error]);
+    const id = pinUserIdRef.current;
+    if (!id) return;
+    const el = userBubbleRefs.current.get(id);
+    const list = listRef.current;
+    if (!el || !list) return;
+
+    // 等用户气泡入 DOM 后，对齐到列表可视区顶部（回复在下方展开，不贴底）
+    const frame = requestAnimationFrame(() => {
+      const top =
+        el.getBoundingClientRect().top -
+        list.getBoundingClientRect().top +
+        list.scrollTop;
+      list.scrollTop = Math.max(0, top);
+      pinUserIdRef.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [messages]);
 
   useEffect(() => {
     return () => {
@@ -112,6 +128,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       content,
       createdAt: Date.now(),
     };
+    pinUserIdRef.current = userMsg.id;
     const assistantId = makeId();
     const nextMessages = [...messages, userMsg];
     setMessages([
@@ -257,10 +274,21 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
         </div>
       )}
 
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 [overflow-anchor:none]"
+      >
         {messages.map((m) => (
           <div
             key={m.id}
+            ref={
+              m.role === "user"
+                ? (node) => {
+                    if (node) userBubbleRefs.current.set(m.id, node);
+                    else userBubbleRefs.current.delete(m.id);
+                  }
+                : undefined
+            }
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
