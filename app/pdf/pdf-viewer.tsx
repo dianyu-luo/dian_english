@@ -728,6 +728,15 @@ export default function PdfViewer({
     return Math.min(containerWidth - 96, 900) * scale;
   }, [containerWidth, scale]);
 
+  const fitToWidth = useCallback(() => {
+    if (!containerWidth) return;
+    const available = containerWidth - 96;
+    if (available <= 0) return;
+    const base = Math.min(available, 900);
+    const next = Math.min(2.5, Math.max(0.5, Math.round((available / base) * 100) / 100));
+    setScale(next);
+  }, [containerWidth]);
+
   // 高亮出现且页面已是目标页时，把单词滚到视口中央（不是滚到阅读器顶部）
   useEffect(() => {
     if (!highlight || highlight.pageNumber !== pageNumber) return;
@@ -1688,6 +1697,16 @@ export default function PdfViewer({
             aria-label="放大"
           >
             +
+          </button>
+          <button
+            type="button"
+            disabled={!file || !containerWidth}
+            onClick={fitToWidth}
+            className="border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
+            aria-label="适应宽度"
+            title="适应宽度"
+          >
+            适应宽度
           </button>
         </div>
       </div>
