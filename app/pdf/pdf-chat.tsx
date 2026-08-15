@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ChatMarkdown } from "./chat-markdown";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 
@@ -85,28 +85,34 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  /** 发送后把这条用户消息滚到对话区顶部 */
-  const pinUserIdRef = useRef<string | null>(null);
+  /** 本轮问答：把用户发言钉在对话区顶部，流式输出期间持续对齐 */
+  const pinnedUserIdRef = useRef<string | null>(null);
+  const stickPinRef = useRef(false);
+  const programmaticScrollRef = useRef(false);
   const userBubbleRefs = useRef(new Map<string, HTMLDivElement>());
 
-  useEffect(() => {
-    const id = pinUserIdRef.current;
-    if (!id) return;
-    const el = userBubbleRefs.current.get(id);
+  const pinUserToTop = useCallback((userId: string) => {
     const list = listRef.current;
-    if (!el || !list) return;
-
-    // 等用户气泡入 DOM 后，对齐到列表可视区顶部（回复在下方展开，不贴底）
-    const frame = requestAnimationFrame(() => {
-      const top =
-        el.getBoundingClientRect().top -
-        list.getBoundingClientRect().top +
-        list.scrollTop;
-      list.scrollTop = Math.max(0, top);
-      pinUserIdRef.current = null;
+    const el = userBubbleRefs.current.get(userId);
+    if (!list || !el) return false;
+    const delta =
+      el.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    if (Math.abs(delta) < 1) return true;
+    programmaticScrollRef.current = true;
+    list.scrollTop += delta;
+    // 下一帧再清标志，避免把程序滚动误判成用户上滚
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
     });
-    return () => cancelAnimationFrame(frame);
-  }, [messages]);
+    return true;
+  }, []);
+
+  // 发送后 + 流式生成中：每轮 DOM 更新后把用户气泡钉在可视区顶部
+  useLayoutEffect(() => {
+    const userId = pinnedUserIdRef.current;
+    if (!userId || !stickPinRef.current) return;
+    pinUserToTop(userId);
+  }, [messages, sending, pinUserToTop]);
 
   useEffect(() => {
     return () => {
@@ -128,9 +134,10 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       content,
       createdAt: Date.now(),
     };
-    pinUserIdRef.current = userMsg.id;
     const assistantId = makeId();
     const nextMessages = [...messages, userMsg];
+    pinnedUserIdRef.current = userMsg.id;
+    stickPinRef.current = true;
     setMessages([
       ...nextMessages,
       {
@@ -220,7 +227,20 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       );
       setError(err instanceof Error ? err.message : "发送失败");
     } finally {
+      const id = pinnedUserIdRef.current;
+      const shouldPin = stickPinRef.current && id;
       setSending(false);
+      // 收尾再钉一次（markdown 终态布局），再解除跟随
+      if (shouldPin && id) {
+        requestAnimationFrame(() => {
+          pinUserToTop(id);
+          stickPinRef.current = false;
+          pinnedUserIdRef.current = null;
+        });
+      } else {
+        stickPinRef.current = false;
+        pinnedUserIdRef.current = null;
+      }
       inputRef.current?.focus();
     }
   };
@@ -276,6 +296,19 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
 
       <div
         ref={listRef}
+        onScroll={() => {
+          if (programmaticScrollRef.current || !stickPinRef.current) return;
+          const userId = pinnedUserIdRef.current;
+          const list = listRef.current;
+          const el = userId ? userBubbleRefs.current.get(userId) : null;
+          if (!list || !el) return;
+          const delta =
+            el.getBoundingClientRect().top - list.getBoundingClientRect().top;
+          // 用户手动上/下滚离开顶部钉住位置时，停止自动跟随
+          if (Math.abs(delta) > 48) {
+            stickPinRef.current = false;
+          }
+        }}
         className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 [overflow-anchor:none]"
       >
         {messages.map((m) => (
