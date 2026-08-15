@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useRouter } from "next/navigation";
 import { ChatMarkdown } from "./chat-markdown";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 
@@ -71,6 +72,7 @@ async function readChatStream(
 }
 
 export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -282,6 +284,16 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
                 {label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                if (!selected) return;
+                router.push(`/note/word?word=${encodeURIComponent(selected.word)}`);
+              }}
+              className="border border-[#d6d3d1] bg-white px-2 py-0.5 text-xs text-[#57534e] hover:bg-[#f0ebe3]"
+            >
+              笔记
+            </button>
           </div>
         </div>
       ) : (
