@@ -288,7 +288,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
               type="button"
               onClick={() => {
                 if (!selected) return;
-                router.push(`/note/word?word=${encodeURIComponent(selected.word)}`);
+                router.push(`/pdf/note?word=${encodeURIComponent(selected.word)}`);
               }}
               className="border border-[#d6d3d1] bg-white px-2 py-0.5 text-xs text-[#57534e] hover:bg-[#f0ebe3]"
             >
