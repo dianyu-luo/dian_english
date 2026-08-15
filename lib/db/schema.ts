@@ -51,46 +51,11 @@ export const pdfWordMarks = sqliteTable("pdf_word_marks", {
     .$defaultFn(() => new Date()),
 });
 
-/** PDF 问题标记：问号位置 + 问题内容 */
-export const pdfQuestions = sqliteTable("pdf_questions", {
+/** PDF 页内标记：问题 / 笔记 / 书签（type 区分） */
+export const pdfPins = sqliteTable("pdf_pins", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   fileName: text("file_name").notNull(),
-  pageNumber: integer("page_number").notNull(),
-  rectLeft: real("rect_left").notNull(),
-  rectTop: real("rect_top").notNull(),
-  rectWidth: real("rect_width").notNull(),
-  rectHeight: real("rect_height").notNull(),
-  content: text("content").notNull().default(""),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
-
-/** PDF 笔记标记：便签位置 + 笔记内容 */
-export const pdfNotes = sqliteTable("pdf_notes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  fileName: text("file_name").notNull(),
-  pageNumber: integer("page_number").notNull(),
-  rectLeft: real("rect_left").notNull(),
-  rectTop: real("rect_top").notNull(),
-  rectWidth: real("rect_width").notNull(),
-  rectHeight: real("rect_height").notNull(),
-  content: text("content").notNull().default(""),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
-
-/** PDF 书签：页内位置标记，便于快速跳回 */
-export const pdfBookmarks = sqliteTable("pdf_bookmarks", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  fileName: text("file_name").notNull(),
+  type: text("type").notNull(), // question | note | bookmark
   pageNumber: integer("page_number").notNull(),
   rectLeft: real("rect_left").notNull(),
   rectTop: real("rect_top").notNull(),

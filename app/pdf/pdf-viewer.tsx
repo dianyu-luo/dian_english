@@ -48,9 +48,12 @@ type PdfViewerProps = {
   fillHeight?: boolean;
 };
 
+type PinKind = "question" | "note" | "bookmark";
+
 type PdfPin = {
   id: number;
   fileName: string;
+  type: PinKind;
   pageNumber: number;
   rectLeft: number;
   rectTop: number;
@@ -58,8 +61,6 @@ type PdfPin = {
   rectHeight: number;
   content: string;
 };
-
-type PinKind = "question" | "note" | "bookmark";
 
 type ContextMenuState = {
   x: number;
@@ -116,11 +117,7 @@ type AnnotateToolId = "arrow" | "circle" | "rect";
 type NormPoint = { x: number; y: number };
 
 const QUESTION_MARKER_PX = 28;
-const PIN_API: Record<PinKind, string> = {
-  question: "/api/pdf/questions",
-  note: "/api/pdf/notes",
-  bookmark: "/api/pdf/bookmarks",
-};
+const PINS_API = "/api/pdf/pins";
 const ARROW_COLOR = "#dc2626";
 const ARROW_STROKE_WIDTH = 2.5;
 const MIN_ARROW_DRAG_PX = 6;
@@ -352,9 +349,7 @@ export default function PdfViewer({
   const [annotateSubmenuOpen, setAnnotateSubmenuOpen] = useState(false);
   const [lastAnnotateTool, setLastAnnotateTool] = useState<AnnotateToolId | null>(null);
   const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
-  const [questions, setQuestions] = useState<PdfPin[]>([]);
-  const [notes, setNotes] = useState<PdfPin[]>([]);
-  const [bookmarks, setBookmarks] = useState<PdfPin[]>([]);
+  const [pins, setPins] = useState<PdfPin[]>([]);
   const [wordMarks, setWordMarks] = useState<PdfWordMark[]>([]);
   const [activePin, setActivePin] = useState<{ kind: PinKind; id: number } | null>(null);
   const [pinDraft, setPinDraft] = useState("");
@@ -789,27 +784,25 @@ export default function PdfViewer({
     setWordMarkDraft("");
   }, []);
 
-  const updatePins = useCallback((kind: PinKind, updater: (prev: PdfPin[]) => PdfPin[]) => {
-    if (kind === "question") setQuestions(updater);
-    else if (kind === "note") setNotes(updater);
-    else setBookmarks(updater);
+  const updatePins = useCallback((updater: (prev: PdfPin[]) => PdfPin[]) => {
+    setPins(updater);
   }, []);
 
-  const loadPins = useCallback(async (kind: PinKind, name: string) => {
+  const loadPins = useCallback(async (name: string) => {
     if (!name) {
-      updatePins(kind, () => []);
+      setPins([]);
       return;
     }
     try {
-      const res = await fetch(`${PIN_API[kind]}?fileName=${encodeURIComponent(name)}`);
+      const res = await fetch(`${PINS_API}?fileName=${encodeURIComponent(name)}`);
       const data = await res.json();
       if (res.ok && data.ok) {
-        updatePins(kind, () => data.items as PdfPin[]);
+        setPins(data.items as PdfPin[]);
       }
     } catch {
       // 加载失败时保留现有列表
     }
-  }, [updatePins]);
+  }, []);
 
   const loadAnnotations = useCallback(async (name: string) => {
     if (!name) {
@@ -844,9 +837,7 @@ export default function PdfViewer({
   }, []);
 
   useEffect(() => {
-    void loadPins("question", fileName);
-    void loadPins("note", fileName);
-    void loadPins("bookmark", fileName);
+    void loadPins(fileName);
     void loadAnnotations(fileName);
     void loadWordMarks(fileName);
     closePinEditor();
@@ -1099,11 +1090,12 @@ export default function PdfViewer({
       const label =
         kind === "question" ? "问题" : kind === "note" ? "笔记" : "书签";
       try {
-        const res = await fetch(PIN_API[kind], {
+        const res = await fetch(PINS_API, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fileName,
+            type: kind,
             pageNumber: targetPage,
             rect,
             content: kind === "bookmark" ? `第 ${targetPage} 页` : "",
@@ -1114,7 +1106,7 @@ export default function PdfViewer({
           throw new Error(data.error ?? `创建${label}失败`);
         }
         const item = data.item as PdfPin;
-        updatePins(kind, (prev) => [item, ...prev.filter((p) => p.id !== item.id)]);
+        updatePins((prev) => [item, ...prev.filter((p) => p.id !== item.id)]);
         if (kind !== "bookmark") {
           setActivePin({ kind, id: item.id });
           setPinDraft(item.content ?? "");
@@ -1238,11 +1230,12 @@ export default function PdfViewer({
     if (!activePin) return;
     setPinSaving(true);
     try {
-      const res = await fetch(PIN_API[activePin.kind], {
+      const res = await fetch(PINS_API, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: activePin.id,
+          type: activePin.kind,
           content: pinDraft,
         }),
       });
@@ -1251,7 +1244,7 @@ export default function PdfViewer({
         throw new Error(data.error ?? "保存失败");
       }
       const item = data.item as PdfPin;
-      updatePins(activePin.kind, (prev) => prev.map((p) => (p.id === item.id ? item : p)));
+      updatePins((prev) => prev.map((p) => (p.id === item.id ? item : p)));
       closePinEditor();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -1263,11 +1256,12 @@ export default function PdfViewer({
   const persistPinRect = useCallback(
     async (kind: PinKind, pin: PdfPin) => {
       try {
-        const res = await fetch(PIN_API[kind], {
+        const res = await fetch(PINS_API, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: pin.id,
+            type: kind,
             rect: {
               left: pin.rectLeft,
               top: pin.rectTop,
@@ -1282,10 +1276,10 @@ export default function PdfViewer({
           throw new Error(data.error ?? "更新位置失败");
         }
         const item = data.item as PdfPin;
-        updatePins(kind, (prev) => prev.map((row) => (row.id === item.id ? item : row)));
+        updatePins((prev) => prev.map((row) => (row.id === item.id ? item : row)));
       } catch (err) {
         setError(err instanceof Error ? err.message : "更新位置失败");
-        if (fileName) void loadPins(kind, fileName);
+        if (fileName) void loadPins(fileName);
       }
     },
     [fileName, loadPins, updatePins],
@@ -1305,12 +1299,12 @@ export default function PdfViewer({
 
       closePinEditor();
       try {
-        const res = await fetch(`${PIN_API[kind]}?id=${pin.id}`, { method: "DELETE" });
+        const res = await fetch(`${PINS_API}?id=${pin.id}`, { method: "DELETE" });
         const data = await res.json();
         if (!res.ok || !data.ok) {
           throw new Error(data.error ?? "删除失败");
         }
-        updatePins(kind, (prev) => prev.filter((row) => row.id !== pin.id));
+        updatePins((prev) => prev.filter((row) => row.id !== pin.id));
       } catch (err) {
         setError(err instanceof Error ? err.message : "删除失败");
       }
@@ -1368,7 +1362,7 @@ export default function PdfViewer({
       drag.currentLeft = left;
       drag.currentTop = top;
 
-      updatePins(kind, (prev) =>
+      updatePins((prev) =>
         prev.map((row) =>
           row.id === drag.id ? { ...row, rectLeft: left, rectTop: top } : row,
         ),
@@ -1396,7 +1390,7 @@ export default function PdfViewer({
       setDraggingPin(null);
 
       if (moved) {
-        updatePins(kind, (prev) =>
+        updatePins((prev) =>
           prev.map((row) =>
             row.id === next.id ? { ...row, rectLeft: next.rectLeft, rectTop: next.rectTop } : row,
           ),
@@ -1601,18 +1595,18 @@ export default function PdfViewer({
   }, [contextMenu]);
 
   const pageQuestions = useMemo(
-    () => questions.filter((q) => q.pageNumber === pageNumber),
-    [questions, pageNumber],
+    () => pins.filter((q) => q.type === "question" && q.pageNumber === pageNumber),
+    [pins, pageNumber],
   );
 
   const pageNotes = useMemo(
-    () => notes.filter((n) => n.pageNumber === pageNumber),
-    [notes, pageNumber],
+    () => pins.filter((n) => n.type === "note" && n.pageNumber === pageNumber),
+    [pins, pageNumber],
   );
 
   const pageBookmarks = useMemo(
-    () => bookmarks.filter((b) => b.pageNumber === pageNumber),
-    [bookmarks, pageNumber],
+    () => pins.filter((b) => b.type === "bookmark" && b.pageNumber === pageNumber),
+    [pins, pageNumber],
   );
 
   const pageArrows = useMemo(
@@ -1630,14 +1624,8 @@ export default function PdfViewer({
 
   const activePinItem = useMemo(() => {
     if (!activePin) return null;
-    const list =
-      activePin.kind === "question"
-        ? questions
-        : activePin.kind === "note"
-          ? notes
-          : bookmarks;
-    return list.find((p) => p.id === activePin.id) ?? null;
-  }, [activePin, questions, notes, bookmarks]);
+    return pins.find((p) => p.id === activePin.id && p.type === activePin.kind) ?? null;
+  }, [activePin, pins]);
 
   const activeWordMarkItem = useMemo(() => {
     if (activeWordMarkId == null) return null;

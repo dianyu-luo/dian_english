@@ -1,7 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { pdfBookmarks } from "@/lib/db/schema";
+import { pdfPins } from "@/lib/db/schema";
+
+const PIN_TYPES = new Set(["question", "note", "bookmark"]);
 
 type Rect = {
   left?: number;
@@ -12,6 +14,7 @@ type Rect = {
 
 type SaveBody = {
   id?: number;
+  type?: string;
   fileName?: string;
   pageNumber?: number;
   rect?: Rect;
@@ -29,27 +32,33 @@ function isValidRect(rect: Rect | undefined): rect is Required<Rect> {
   );
 }
 
+function isPinType(type: unknown): type is "question" | "note" | "bookmark" {
+  return typeof type === "string" && PIN_TYPES.has(type);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const fileName = searchParams.get("fileName");
+  const type = searchParams.get("type");
   const pageNumberRaw = searchParams.get("pageNumber");
-  const limit = Math.min(Number(searchParams.get("limit") ?? 200) || 200, 500);
+  const limit = Math.min(Number(searchParams.get("limit") ?? 500) || 500, 1000);
 
   if (!fileName) {
     return NextResponse.json({ ok: false, error: "缺少 fileName" }, { status: 400 });
   }
 
   const pageNumber = pageNumberRaw ? Number(pageNumberRaw) : null;
-  const where =
-    pageNumber != null && Number.isFinite(pageNumber)
-      ? and(eq(pdfBookmarks.fileName, fileName), eq(pdfBookmarks.pageNumber, pageNumber))
-      : eq(pdfBookmarks.fileName, fileName);
+  const filters = [eq(pdfPins.fileName, fileName)];
+  if (isPinType(type)) filters.push(eq(pdfPins.type, type));
+  if (pageNumber != null && Number.isFinite(pageNumber)) {
+    filters.push(eq(pdfPins.pageNumber, pageNumber));
+  }
 
   const rows = await db
     .select()
-    .from(pdfBookmarks)
-    .where(where)
-    .orderBy(desc(pdfBookmarks.updatedAt))
+    .from(pdfPins)
+    .where(and(...filters))
+    .orderBy(desc(pdfPins.updatedAt))
     .limit(limit);
 
   return NextResponse.json({ ok: true, items: rows });
@@ -67,9 +76,11 @@ export async function POST(request: Request) {
   const pageNumber = body.pageNumber;
   const rect = body.rect;
   const content = typeof body.content === "string" ? body.content : "";
+  const type = body.type;
 
   if (
     !fileName ||
+    !isPinType(type) ||
     !isFiniteNumber(pageNumber) ||
     pageNumber < 1 ||
     !isValidRect(rect)
@@ -79,9 +90,10 @@ export async function POST(request: Request) {
 
   const now = new Date();
   const [row] = await db
-    .insert(pdfBookmarks)
+    .insert(pdfPins)
     .values({
       fileName,
+      type,
       pageNumber,
       rectLeft: rect.left,
       rectTop: rect.top,
@@ -111,8 +123,8 @@ export async function PATCH(request: Request) {
 
   const [existing] = await db
     .select()
-    .from(pdfBookmarks)
-    .where(eq(pdfBookmarks.id, id))
+    .from(pdfPins)
+    .where(eq(pdfPins.id, id))
     .limit(1);
 
   if (!existing) {
@@ -130,9 +142,10 @@ export async function PATCH(request: Request) {
     : {};
 
   const [row] = await db
-    .update(pdfBookmarks)
+    .update(pdfPins)
     .set({
       ...nextRect,
+      type: isPinType(body.type) ? body.type : existing.type,
       content: typeof body.content === "string" ? body.content : existing.content,
       pageNumber:
         isFiniteNumber(body.pageNumber) && body.pageNumber >= 1
@@ -141,7 +154,7 @@ export async function PATCH(request: Request) {
       fileName: body.fileName?.trim() || existing.fileName,
       updatedAt: now,
     })
-    .where(eq(pdfBookmarks.id, id))
+    .where(eq(pdfPins.id, id))
     .returning();
 
   return NextResponse.json({ ok: true, item: row, created: false });
@@ -158,14 +171,14 @@ export async function DELETE(request: Request) {
 
   const [existing] = await db
     .select()
-    .from(pdfBookmarks)
-    .where(eq(pdfBookmarks.id, id))
+    .from(pdfPins)
+    .where(eq(pdfPins.id, id))
     .limit(1);
 
   if (!existing) {
     return NextResponse.json({ ok: false, error: "记录不存在" }, { status: 404 });
   }
 
-  await db.delete(pdfBookmarks).where(eq(pdfBookmarks.id, id));
+  await db.delete(pdfPins).where(eq(pdfPins.id, id));
   return NextResponse.json({ ok: true, id });
 }
