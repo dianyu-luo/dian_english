@@ -87,6 +87,24 @@ export const pdfNotes = sqliteTable("pdf_notes", {
     .$defaultFn(() => new Date()),
 });
 
+/** PDF 书签：页内位置标记，便于快速跳回 */
+export const pdfBookmarks = sqliteTable("pdf_bookmarks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  fileName: text("file_name").notNull(),
+  pageNumber: integer("page_number").notNull(),
+  rectLeft: real("rect_left").notNull(),
+  rectTop: real("rect_top").notNull(),
+  rectWidth: real("rect_width").notNull(),
+  rectHeight: real("rect_height").notNull(),
+  content: text("content").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 /** PDF 标注笔记：箭头 / 圆形 / 矩形等 */
 export const pdfAnnotations = sqliteTable("pdf_annotations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
