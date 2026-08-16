@@ -8,8 +8,16 @@ import { pdfRecentReads } from "@/lib/db/schema";
 
 const pdfDir = path.join(process.cwd(), "data", "pdfs");
 
+const SCALE_MIN = 0.5;
+const SCALE_MAX = 2.5;
+
 function fileUrl(storageKey: string) {
   return `/api/pdf/file/${encodeURIComponent(storageKey)}`;
+}
+
+function clampScale(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(value * 100) / 100));
 }
 
 function serialize(row: typeof pdfRecentReads.$inferSelect) {
@@ -17,6 +25,7 @@ function serialize(row: typeof pdfRecentReads.$inferSelect) {
     id: row.id,
     fileName: row.fileName,
     pageNumber: row.pageNumber,
+    scale: row.scale,
     storageKey: row.storageKey,
     fileSize: row.fileSize,
     updatedAt: row.updatedAt,
@@ -49,8 +58,8 @@ export async function GET(request: Request) {
 
 /**
  * 保存阅读进度：
- * - multipart：上传 PDF 并记录页码
- * - JSON：仅更新已有文件的页码
+ * - multipart：上传 PDF 并记录页码 / 缩放
+ * - JSON：仅更新已有文件的页码 / 缩放
  */
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
@@ -59,6 +68,7 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("file");
     const pageRaw = form.get("pageNumber");
+    const scaleRaw = form.get("scale");
 
     if (!(file instanceof File)) {
       return NextResponse.json({ ok: false, error: "缺少 PDF 文件" }, { status: 400 });
@@ -86,6 +96,11 @@ export async function POST(request: Request) {
         ? Math.max(1, Number(pageRaw) || 1)
         : (existing[0]?.pageNumber ?? 1);
 
+    const scale =
+      scaleRaw != null && String(scaleRaw) !== ""
+        ? clampScale(Number(scaleRaw))
+        : clampScale(existing[0]?.scale ?? 1);
+
     let storageToUse = storageKey;
     if (existing[0] && existing[0].fileSize === buffer.length) {
       // 同名同大小：复用已存文件，只更新页码与时间
@@ -100,6 +115,7 @@ export async function POST(request: Request) {
         .update(pdfRecentReads)
         .set({
           pageNumber,
+          scale,
           storageKey: storageToUse,
           fileSize: buffer.length,
           updatedAt: now,
@@ -114,6 +130,7 @@ export async function POST(request: Request) {
       .values({
         fileName,
         pageNumber,
+        scale,
         storageKey: storageToUse,
         fileSize: buffer.length,
         updatedAt: now,
@@ -123,22 +140,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, item: serialize(row) });
   }
 
-  let body: { fileName?: string; pageNumber?: number };
+  let body: { fileName?: string; pageNumber?: number; scale?: number };
   try {
-    body = (await request.json()) as { fileName?: string; pageNumber?: number };
+    body = (await request.json()) as {
+      fileName?: string;
+      pageNumber?: number;
+      scale?: number;
+    };
   } catch {
     return NextResponse.json({ ok: false, error: "无效 JSON" }, { status: 400 });
   }
 
   const fileName = body.fileName?.trim();
   const pageNumber = body.pageNumber;
+  const scale = body.scale;
 
-  if (
-    !fileName ||
-    typeof pageNumber !== "number" ||
-    !Number.isFinite(pageNumber) ||
-    pageNumber < 1
-  ) {
+  const hasPage =
+    typeof pageNumber === "number" && Number.isFinite(pageNumber) && pageNumber >= 1;
+  const hasScale = typeof scale === "number" && Number.isFinite(scale);
+
+  if (!fileName || (!hasPage && !hasScale)) {
     return NextResponse.json({ ok: false, error: "缺少必要字段" }, { status: 400 });
   }
 
@@ -154,7 +175,11 @@ export async function POST(request: Request) {
 
   const [row] = await db
     .update(pdfRecentReads)
-    .set({ pageNumber: Math.floor(pageNumber), updatedAt: new Date() })
+    .set({
+      ...(hasPage ? { pageNumber: Math.floor(pageNumber) } : {}),
+      ...(hasScale ? { scale: clampScale(scale) } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(pdfRecentReads.fileName, fileName))
     .returning();
 

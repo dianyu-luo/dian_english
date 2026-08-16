@@ -20,6 +20,7 @@ type PdfSource = File | string | null;
 type RecentItem = {
   fileName: string;
   pageNumber: number;
+  scale: number;
   url: string;
 };
 
@@ -308,11 +309,16 @@ function ArrowMarkup({
   );
 }
 
-async function saveRecentPage(fileName: string, pageNumber: number) {
+function clampScale(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(2.5, Math.max(0.5, Math.round(value * 100) / 100));
+}
+
+async function saveRecentProgress(fileName: string, pageNumber: number, scale: number) {
   await fetch("/api/pdf/recent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileName, pageNumber }),
+    body: JSON.stringify({ fileName, pageNumber, scale: clampScale(scale) }),
   });
 }
 
@@ -489,7 +495,7 @@ export default function PdfViewer({
         setFile(item.url);
         setFileName(item.fileName);
         setPageNumber(item.pageNumber);
-        setScale(1);
+        setScale(clampScale(item.scale ?? 1));
         onRecentChangeRef.current?.(item);
       } catch {
         onRecentChangeRef.current?.(null);
@@ -503,7 +509,7 @@ export default function PdfViewer({
     };
   }, []);
 
-  // 翻页时写入最近阅读
+  // 翻页 / 缩放时写入最近阅读
   useEffect(() => {
     if (!fileName || !file || skipPersistRef.current) {
       skipPersistRef.current = false;
@@ -511,17 +517,18 @@ export default function PdfViewer({
     }
 
     const timer = window.setTimeout(() => {
-      void saveRecentPage(fileName, pageNumber).then(() => {
+      void saveRecentProgress(fileName, pageNumber, scale).then(() => {
         onRecentChangeRef.current?.({
           fileName,
           pageNumber,
+          scale: clampScale(scale),
           url: typeof file === "string" ? file : "",
         });
       });
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [fileName, pageNumber, file]);
+  }, [fileName, pageNumber, scale, file]);
 
   // 点击已保存标记：跳页并高亮（高亮后居中，不滚到页面顶部）
   useEffect(() => {
@@ -544,7 +551,7 @@ export default function PdfViewer({
           setFileName(item.fileName);
           setPageNumber(jumpRequest.pageNumber);
           setNumPages(0);
-          setScale(1);
+          setScale(clampScale(item.scale ?? 1));
           setError(null);
           onRecentChangeRef.current?.(item);
         } else {
@@ -683,7 +690,7 @@ export default function PdfViewer({
       setFileName(item.fileName);
       setPageNumber(item.pageNumber);
       setNumPages(0);
-      setScale(1);
+      setScale(clampScale(item.scale ?? 1));
       onRecentChangeRef.current?.(item);
     } catch (err) {
       setError(err instanceof Error ? err.message : "上传失败");

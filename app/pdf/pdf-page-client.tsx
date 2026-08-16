@@ -36,6 +36,7 @@ type SavedMark = {
 type RecentItem = {
   fileName: string;
   pageNumber: number;
+  scale: number;
   url: string;
 };
 

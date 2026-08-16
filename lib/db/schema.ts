@@ -16,11 +16,12 @@ export const helloTest = sqliteTable("hello_test", {
     .$defaultFn(() => new Date()),
 });
 
-/** 最近阅读：上次打开的 PDF 与页码 */
+/** 最近阅读：上次打开的 PDF、页码与缩放比例 */
 export const pdfRecentReads = sqliteTable("pdf_recent_reads", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   fileName: text("file_name").notNull().unique(),
   pageNumber: integer("page_number").notNull().default(1),
+  scale: real("scale").notNull().default(1),
   storageKey: text("storage_key").notNull(),
   fileSize: integer("file_size").notNull().default(0),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
