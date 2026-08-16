@@ -749,13 +749,24 @@ export default function PdfViewer({
   }, [containerWidth, scale]);
 
   const fitToWidth = useCallback(() => {
-    if (!containerWidth) return;
+    if (!containerWidth || !fileName) return;
     const available = containerWidth - 96;
     if (available <= 0) return;
     const base = Math.min(available, 900);
-    const next = Math.min(2.5, Math.max(0.5, Math.round((available / base) * 100) / 100));
-    setScale(next);
-  }, [containerWidth]);
+    const next = clampScale(Math.round((available / base) * 100) / 100);
+    setScale((prev) => {
+      if (prev !== next) skipPersistRef.current = true;
+      return next;
+    });
+    void saveRecentProgress(fileName, pageNumber, next).then(() => {
+      onRecentChangeRef.current?.({
+        fileName,
+        pageNumber,
+        scale: next,
+        url: typeof file === "string" ? file : "",
+      });
+    });
+  }, [containerWidth, fileName, pageNumber, file]);
 
   // 高亮出现且页面已是目标页时，把单词滚到视口中央（不是滚到阅读器顶部）
   useEffect(() => {
