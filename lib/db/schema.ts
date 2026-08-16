@@ -62,6 +62,7 @@ export const pdfPins = sqliteTable("pdf_pins", {
   rectWidth: real("rect_width").notNull(),
   rectHeight: real("rect_height").notNull(),
   content: text("content").notNull().default(""),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

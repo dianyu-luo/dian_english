@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pdfPins } from "@/lib/db/schema";
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
   }
 
   const pageNumber = pageNumberRaw ? Number(pageNumberRaw) : null;
-  const filters = [eq(pdfPins.fileName, fileName)];
+  const filters = [eq(pdfPins.fileName, fileName), isNull(pdfPins.deletedAt)];
   if (isPinType(type)) filters.push(eq(pdfPins.type, type));
   if (pageNumber != null && Number.isFinite(pageNumber)) {
     filters.push(eq(pdfPins.pageNumber, pageNumber));
@@ -100,6 +100,7 @@ export async function POST(request: Request) {
       rectWidth: rect.width,
       rectHeight: rect.height,
       content,
+      deletedAt: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -124,7 +125,7 @@ export async function PATCH(request: Request) {
   const [existing] = await db
     .select()
     .from(pdfPins)
-    .where(eq(pdfPins.id, id))
+    .where(and(eq(pdfPins.id, id), isNull(pdfPins.deletedAt)))
     .limit(1);
 
   if (!existing) {
@@ -172,13 +173,18 @@ export async function DELETE(request: Request) {
   const [existing] = await db
     .select()
     .from(pdfPins)
-    .where(eq(pdfPins.id, id))
+    .where(and(eq(pdfPins.id, id), isNull(pdfPins.deletedAt)))
     .limit(1);
 
   if (!existing) {
     return NextResponse.json({ ok: false, error: "记录不存在" }, { status: 404 });
   }
 
-  await db.delete(pdfPins).where(eq(pdfPins.id, id));
+  const now = new Date();
+  await db
+    .update(pdfPins)
+    .set({ deletedAt: now, updatedAt: now })
+    .where(eq(pdfPins.id, id));
+
   return NextResponse.json({ ok: true, id });
 }
