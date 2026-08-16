@@ -374,6 +374,7 @@ export default function PdfViewer({
     y2: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -721,16 +722,19 @@ export default function PdfViewer({
     setHighlight(null);
     setPageNumber(next);
     setPageInput(String(next));
+    scrollAreaRef.current?.scrollTo({ top: 0 });
   }, [file, numPages, pageInput, pageNumber]);
 
   const goPrevPage = useCallback(() => {
     setHighlight(null);
     setPageNumber((p) => Math.max(1, p - 1));
+    // scrollAreaRef.current?.scrollTo({ top: 0 });
   }, []);
 
   const goNextPage = useCallback(() => {
     setHighlight(null);
     setPageNumber((p) => Math.min(numPages, p + 1));
+    scrollAreaRef.current?.scrollTo({ top: 0 });
   }, [numPages]);
 
   // react-pdf 把 onItemClick 封进 useRef，只会拿到首次回调；必须用稳定函数 + ref 读最新页数
@@ -740,6 +744,7 @@ export default function PdfViewer({
     const next = total > 0 ? Math.min(Math.max(1, target), total) : Math.max(1, target);
     setHighlight(null);
     setPageNumber(next);
+    scrollAreaRef.current?.scrollTo({ top: 0 });
   }, []);
 
   const pageWidth = useMemo(() => {
@@ -1824,7 +1829,10 @@ export default function PdfViewer({
             <p className="text-sm text-[#78716c]">打开后会记住文件与页码，下次自动续读</p>
           </button>
         ) : (
-          <div className={`flex justify-center overflow-auto px-12 py-4 ${fillHeight ? "h-full" : ""}`}>
+          <div
+            ref={scrollAreaRef}
+            className={`flex justify-center overflow-auto px-12 py-4 ${fillHeight ? "h-full" : ""}`}
+          >
             <Document
               file={file}
               onLoadSuccess={onDocumentLoadSuccess}
