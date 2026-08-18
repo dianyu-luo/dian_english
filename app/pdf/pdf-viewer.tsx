@@ -121,6 +121,7 @@ type AnnotateToolId = "arrow" | "circle" | "rect";
 type NormPoint = { x: number; y: number };
 
 const QUESTION_MARKER_PX = 28;
+const PIN_DOUBLE_CLICK_MS = 400;
 const PINS_API = "/api/pdf/pins";
 const ARROW_COLOR = "#dc2626";
 const ARROW_STROKE_WIDTH = 2.5;
@@ -422,6 +423,7 @@ export default function PdfViewer({
     currentTop: number;
     moved: boolean;
   } | null>(null);
+  const lastPinClickRef = useRef<{ key: string; time: number } | null>(null);
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
   const onWordMarksChangeRef = useRef(onWordMarksChange);
@@ -1178,6 +1180,23 @@ export default function PdfViewer({
     setPinDraft(pin.content ?? "");
   }, [closeWordMarkEditor, closeSelectionMenu]);
 
+  const openPinMarkdownEditor = useCallback(
+    (kind: PinKind, pin: PdfPin, body?: string) => {
+      const title =
+        kind === "question" ? "问题" : kind === "bookmark" ? "书签" : "笔记";
+      const href = noteEditorHref({
+        kind,
+        id: pin.id,
+        word: title,
+        body: body ?? pin.content ?? "",
+      });
+      closePinEditor();
+      closeMarkerMenu();
+      router.push(href);
+    },
+    [closePinEditor, closeMarkerMenu, router],
+  );
+
   const openWordMarkEditor = useCallback(
     (mark: PdfWordMark) => {
       closePinEditor();
@@ -1443,6 +1462,7 @@ export default function PdfViewer({
       setDraggingPin(null);
 
       if (moved) {
+        lastPinClickRef.current = null;
         updatePins((prev) =>
           prev.map((row) =>
             row.id === next.id ? { ...row, rectLeft: next.rectLeft, rectTop: next.rectTop } : row,
@@ -1452,9 +1472,23 @@ export default function PdfViewer({
         return;
       }
 
+      if (e.type !== "pointerup") return;
+
+      const now = performance.now();
+      const key = `${kind}:${pin.id}`;
+      const last = lastPinClickRef.current;
+      const isDouble = Boolean(last && last.key === key && now - last.time < PIN_DOUBLE_CLICK_MS);
+      lastPinClickRef.current = { key, time: now };
+
+      if (isDouble) {
+        lastPinClickRef.current = null;
+        openPinMarkdownEditor(kind, pin);
+        return;
+      }
+
       if (openOnClick) openPinEditor(kind, pin);
     },
-    [openPinEditor, persistPinRect, updatePins],
+    [openPinEditor, openPinMarkdownEditor, persistPinRect, updatePins],
   );
   useEffect(() => {
     if (!contextMenu) return;
@@ -2006,7 +2040,7 @@ export default function PdfViewer({
                       data-question-marker
                       data-pin-id={q.id}
                       aria-label={q.content ? `问题：${q.content}` : "问题标记"}
-                      title={q.content || "拖动移动 · 点击编辑 · 右键菜单"}
+                      title={q.content || "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
                       className={`absolute z-30 flex touch-none items-center justify-center rounded-full border text-sm font-semibold leading-none shadow-sm select-none ${
                         isDragging
                           ? "cursor-grabbing border-[#b45309] bg-[#fef3c7] text-[#92400e]"
@@ -2046,7 +2080,7 @@ export default function PdfViewer({
                       data-note-marker
                       data-pin-id={n.id}
                       aria-label={n.content ? `笔记：${n.content}` : "笔记标记"}
-                      title={n.content || "拖动移动 · 点击编辑 · 右键菜单"}
+                      title={n.content || "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
                       className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
                         isDragging
                           ? "cursor-grabbing border-[#475569] bg-[#e2e8f0] text-[#334155]"
@@ -2086,7 +2120,7 @@ export default function PdfViewer({
                       data-bookmark-marker
                       data-pin-id={b.id}
                       aria-label={b.content ? `书签：${b.content}` : "书签"}
-                      title={b.content || "拖动移动 · 右键删除"}
+                      title={b.content || "拖动移动 · 双击进入编辑界面 · 右键删除"}
                       className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
                         isDragging
                           ? "cursor-grabbing border-[#9a3412] bg-[#ffedd5] text-[#9a3412]"
@@ -2163,21 +2197,8 @@ export default function PdfViewer({
                         <button
                           type="button"
                           onClick={() => {
-                            if (!activePin) return;
-                            const title =
-                              activePin.kind === "question"
-                                ? "问题"
-                                : activePin.kind === "bookmark"
-                                  ? "书签"
-                                  : "笔记";
-                            const href = noteEditorHref({
-                              kind: activePin.kind,
-                              id: activePin.id,
-                              word: title,
-                              body: pinDraft,
-                            });
-                            closePinEditor();
-                            router.push(href);
+                            if (!activePin || !activePinItem) return;
+                            openPinMarkdownEditor(activePin.kind, activePinItem, pinDraft);
                           }}
                           className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
                         >

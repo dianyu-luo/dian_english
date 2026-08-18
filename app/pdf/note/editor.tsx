@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { Markdown } from "../markdown";
 
@@ -47,6 +48,7 @@ function clampFontSize(n: number) {
 }
 
 export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorProps) {
+  const router = useRouter();
   const [raw, setRaw] = useState(initialValue);
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [fontSize, setFontSize] = useState(FONT_DEFAULT);
@@ -121,6 +123,16 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
         });
     };
   }, [canSave]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      router.push("/pdf");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [router]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col md:flex-row">
