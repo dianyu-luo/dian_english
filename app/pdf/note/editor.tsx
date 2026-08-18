@@ -35,9 +35,21 @@ type NoteEditorProps = {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+const FONT_MIN = 12;
+const FONT_MAX = 48;
+const FONT_STEP = 2;
+const FONT_DEFAULT = 14;
+const FONT_STORAGE_KEY = "pdf-note-font-size";
+
+function clampFontSize(n: number) {
+  const snapped = Math.round(n / FONT_STEP) * FONT_STEP;
+  return Math.min(FONT_MAX, Math.max(FONT_MIN, snapped));
+}
+
 export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorProps) {
   const [raw, setRaw] = useState(initialValue);
   const [status, setStatus] = useState<SaveStatus>("idle");
+  const [fontSize, setFontSize] = useState(FONT_DEFAULT);
   const preview = useDeferredValue(raw);
   const rawRef = useRef(raw);
   const lastSavedRef = useRef<string | null>(null);
@@ -48,6 +60,25 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
   saveIdRef.current = saveId;
 
   const canSave = saveKind != null && saveId != null && saveId >= 1;
+
+  useEffect(() => {
+    try {
+      const stored = Number(localStorage.getItem(FONT_STORAGE_KEY));
+      if (Number.isFinite(stored) && stored > 0) setFontSize(clampFontSize(stored));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const changeFontSize = (next: number) => {
+    const size = clampFontSize(next);
+    setFontSize(size);
+    try {
+      localStorage.setItem(FONT_STORAGE_KEY, String(size));
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     if (!canSave || saveKind == null || saveId == null) return;
@@ -100,26 +131,50 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
         关闭
       </Link>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-baseline justify-between gap-3 px-5 pt-3 pr-14">
+        <div className="flex shrink-0 items-center justify-between gap-3 px-5 pt-3 pr-14">
           <p className="text-[11px] tracking-wide text-[#a8a29e] uppercase">Markdown</p>
-          {canSave ? (
-            <p className="text-[11px] text-[#a8a29e]">
-              {status === "saving"
-                ? "保存中…"
-                : status === "error"
-                  ? "保存失败"
-                  : status === "saved"
-                    ? "已保存"
-                    : ""}
-            </p>
-          ) : null}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center text-[#a8a29e]">
+              <button
+                type="button"
+                aria-label="减小字体"
+                disabled={fontSize <= FONT_MIN}
+                onClick={() => changeFontSize(fontSize - FONT_STEP)}
+                className="px-1 py-0.5 text-[11px] hover:text-[#1c1917] disabled:opacity-30"
+              >
+                A-
+              </button>
+              <span className="min-w-8 text-center text-[11px] tabular-nums">{fontSize}</span>
+              <button
+                type="button"
+                aria-label="增大字体"
+                disabled={fontSize >= FONT_MAX}
+                onClick={() => changeFontSize(fontSize + FONT_STEP)}
+                className="px-1 py-0.5 text-[13px] leading-none hover:text-[#1c1917] disabled:opacity-30"
+              >
+                A+
+              </button>
+            </div>
+            {canSave ? (
+              <p className="text-[11px] text-[#a8a29e]">
+                {status === "saving"
+                  ? "保存中…"
+                  : status === "error"
+                    ? "保存失败"
+                    : status === "saved"
+                      ? "已保存"
+                      : ""}
+              </p>
+            ) : null}
+          </div>
         </div>
         <textarea
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
           placeholder="输入 Markdown…"
           spellCheck={false}
-          className="min-h-0 flex-1 resize-none bg-transparent px-5 py-3 font-mono text-sm leading-6 text-[#1c1917] outline-none placeholder:text-[#a8a29e]"
+          style={{ fontSize, lineHeight: 1.65 }}
+          className="min-h-0 flex-1 resize-none bg-transparent px-5 py-3 font-mono text-[#1c1917] outline-none placeholder:text-[#a8a29e]"
         />
       </section>
       <div className="h-px shrink-0 bg-[#e7e2d9] md:h-auto md:w-px" aria-hidden />
@@ -129,9 +184,11 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
         </p>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
           {preview.trim() ? (
-            <Markdown content={preview} />
+            <Markdown content={preview} fontSize={fontSize} />
           ) : (
-            <p className="text-sm text-[#a8a29e]">预览会显示在这里</p>
+            <p className="text-[#a8a29e]" style={{ fontSize }}>
+              预览会显示在这里
+            </p>
           )}
         </div>
       </section>

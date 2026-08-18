@@ -20,7 +20,7 @@ function MathFormula({ tex, displayMode }: { tex: string; displayMode: boolean }
       output: "html",
     });
   } catch {
-    return <code className="font-mono text-[12px]">{tex}</code>;
+    return <code className="font-mono text-[0.86em]">{tex}</code>;
   }
 
   const copyLatex = async () => {
@@ -95,15 +95,15 @@ const components: Components = {
   ),
   ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 first:mt-0 last:mb-0">{children}</ul>,
   ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5 first:mt-0 last:mb-0">{children}</ol>,
-  li: ({ children }) => <li className="leading-6">{children}</li>,
+  li: ({ children }) => <li className="leading-[1.5]">{children}</li>,
   h1: ({ children }) => (
-    <h1 className="mb-2 mt-3 text-base font-semibold tracking-tight first:mt-0">{children}</h1>
+    <h1 className="mb-2 mt-3 text-[1.15em] font-semibold tracking-tight first:mt-0">{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="mb-2 mt-3 text-sm font-semibold tracking-tight first:mt-0">{children}</h2>
+    <h2 className="mb-2 mt-3 text-[1.05em] font-semibold tracking-tight first:mt-0">{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="mb-1.5 mt-2.5 text-sm font-semibold first:mt-0">{children}</h3>
+    <h3 className="mb-1.5 mt-2.5 font-semibold first:mt-0">{children}</h3>
   ),
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 border-[#d6d3d1] pl-3 text-[#57534e] first:mt-0 last:mb-0">
@@ -128,10 +128,10 @@ const components: Components = {
 
     const isBlock = cls.includes("language-");
     if (isBlock) {
-      return <code className="font-mono text-[12px] leading-5 text-[#292524]">{children}</code>;
+      return <code className="font-mono text-[0.86em] leading-[1.45] text-[#292524]">{children}</code>;
     }
     return (
-      <code className="rounded-sm bg-[#f0ebe3] px-1 py-0.5 font-mono text-[12px] text-[#1c1917]">
+      <code className="rounded-sm bg-[#f0ebe3] px-1 py-0.5 font-mono text-[0.86em] text-[#1c1917]">
         {children}
       </code>
     );
@@ -155,14 +155,14 @@ const components: Components = {
     if (mathChild) return <>{children}</>;
 
     return (
-      <pre className="my-2 overflow-x-auto border border-[#e7e2d9] bg-[#f6f4ef] px-2.5 py-2 font-mono text-[12px] leading-5 first:mt-0 last:mb-0">
+      <pre className="my-2 overflow-x-auto border border-[#e7e2d9] bg-[#f6f4ef] px-2.5 py-2 font-mono text-[0.86em] leading-[1.45] first:mt-0 last:mb-0">
         {children}
       </pre>
     );
   },
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
-      <table className="w-full border-collapse text-left text-xs">{children}</table>
+      <table className="w-full border-collapse text-left text-[0.86em]">{children}</table>
     </div>
   ),
   thead: ({ children }) => <thead className="border-b border-[#d6d3d1] bg-[#f6f4ef]">{children}</thead>,
@@ -214,15 +214,19 @@ function prepareMarkdown(src: string) {
 type MarkdownProps = {
   content: string;
   children?: ReactNode;
+  fontSize?: number;
 };
 
-export function Markdown({ content, children }: MarkdownProps) {
+export function Markdown({ content, children, fontSize }: MarkdownProps) {
   if (!content.trim()) return null;
 
   const markdown = prepareMarkdown(content);
 
   return (
-    <div className="markdown text-sm text-[#292524]">
+    <div
+      className={`markdown text-[#292524] ${fontSize == null ? "text-sm" : ""}`}
+      style={fontSize != null ? { fontSize } : undefined}
+    >
       <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} components={components}>
         {markdown}
       </ReactMarkdown>
