@@ -10,6 +10,7 @@ import {
   type OnPdfWordSelect,
   type PdfWordSelectInfo,
 } from "./get-selected-word";
+import { Markdown } from "./markdown";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -229,6 +230,32 @@ function BookmarkMarkerIcon() {
   );
 }
 
+function PinMarkdownPreview({ pin }: { pin: PdfPin }) {
+  const content = pin.content.trim();
+  if (!content) return null;
+  const flipLeft = pin.rectLeft + pin.rectWidth > 0.65;
+  const flipUp = pin.rectTop > 0.58;
+  return (
+    <div
+      className="pointer-events-none absolute z-[35] w-72 max-h-72 overflow-hidden border border-[#d6d3d1] bg-[#faf8f4] px-3 py-2 shadow-md"
+      style={{
+        left: flipLeft
+          ? `${pin.rectLeft * 100}%`
+          : `${(pin.rectLeft + pin.rectWidth) * 100}%`,
+        top: `${pin.rectTop * 100}%`,
+        transform: [
+          flipLeft ? "translateX(calc(-100% - 8px))" : "translateX(8px)",
+          flipUp ? "translateY(calc(-100% + 8px))" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      }}
+    >
+      <Markdown content={content} fontSize={13} />
+    </div>
+  );
+}
+
 function ArrowMarkup({
   x1,
   y1,
@@ -385,6 +412,7 @@ export default function PdfViewer({
   const [wordMarkDraft, setWordMarkDraft] = useState("");
   const [wordMarkSaving, setWordMarkSaving] = useState(false);
   const [draggingPin, setDraggingPin] = useState<{ kind: PinKind; id: number } | null>(null);
+  const [hoveredPin, setHoveredPin] = useState<{ kind: PinKind; id: number } | null>(null);
   const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
   const [drawTool, setDrawTool] = useState<DrawTool>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | null>(null);
@@ -424,6 +452,7 @@ export default function PdfViewer({
     moved: boolean;
   } | null>(null);
   const lastPinClickRef = useRef<{ key: string; time: number } | null>(null);
+  const hoverPinTimerRef = useRef<number | null>(null);
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
   const onWordMarksChangeRef = useRef(onWordMarksChange);
@@ -828,6 +857,35 @@ export default function PdfViewer({
     setActiveWordMarkId(null);
     setWordMarkDraft("");
   }, []);
+
+  const clearHoverPinTimer = useCallback(() => {
+    if (hoverPinTimerRef.current != null) {
+      window.clearTimeout(hoverPinTimerRef.current);
+      hoverPinTimerRef.current = null;
+    }
+  }, []);
+
+  const onPinHoverStart = useCallback(
+    (kind: PinKind, pin: PdfPin) => {
+      if (!pin.content.trim()) {
+        clearHoverPinTimer();
+        setHoveredPin(null);
+        return;
+      }
+      clearHoverPinTimer();
+      hoverPinTimerRef.current = window.setTimeout(() => {
+        setHoveredPin({ kind, id: pin.id });
+      }, 160);
+    },
+    [clearHoverPinTimer],
+  );
+
+  const onPinHoverEnd = useCallback(() => {
+    clearHoverPinTimer();
+    setHoveredPin(null);
+  }, [clearHoverPinTimer]);
+
+  useEffect(() => () => clearHoverPinTimer(), [clearHoverPinTimer]);
 
   const updatePins = useCallback((updater: (prev: PdfPin[]) => PdfPin[]) => {
     setPins(updater);
@@ -1394,6 +1452,7 @@ export default function PdfViewer({
       closeSelectionMenu();
       closePinEditor();
       closeWordMarkEditor();
+      clearHoverPinTimer();
       pinDragRef.current = {
         kind,
         id: pin.id,
@@ -1410,7 +1469,7 @@ export default function PdfViewer({
       setDraggingPin({ kind, id: pin.id });
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [closeContextMenu, closeMarkerMenu, closeSelectionMenu, closePinEditor, closeWordMarkEditor],
+    [closeContextMenu, closeMarkerMenu, closeSelectionMenu, closePinEditor, closeWordMarkEditor, clearHoverPinTimer],
   );
 
   const onPinPointerMove = useCallback(
@@ -1713,6 +1772,13 @@ export default function PdfViewer({
     if (!activePin) return null;
     return pins.find((p) => p.id === activePin.id && p.type === activePin.kind) ?? null;
   }, [activePin, pins]);
+
+  const hoveredPinItem = useMemo(() => {
+    if (!hoveredPin || draggingPin || activePin || markerMenu) return null;
+    const pin = pins.find((p) => p.id === hoveredPin.id && p.type === hoveredPin.kind);
+    if (!pin || pin.pageNumber !== pageNumber || !pin.content.trim()) return null;
+    return pin;
+  }, [hoveredPin, draggingPin, activePin, markerMenu, pins, pageNumber]);
 
   const activeWordMarkItem = useMemo(() => {
     if (activeWordMarkId == null) return null;
@@ -2040,7 +2106,7 @@ export default function PdfViewer({
                       data-question-marker
                       data-pin-id={q.id}
                       aria-label={q.content ? `问题：${q.content}` : "问题标记"}
-                      title={q.content || "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
+                      title={q.content.trim() ? undefined : "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
                       className={`absolute z-30 flex touch-none items-center justify-center rounded-full border text-sm font-semibold leading-none shadow-sm select-none ${
                         isDragging
                           ? "cursor-grabbing border-[#b45309] bg-[#fef3c7] text-[#92400e]"
@@ -2060,6 +2126,8 @@ export default function PdfViewer({
                       onPointerMove={(e) => onPinPointerMove(e, "question")}
                       onPointerUp={(e) => onPinPointerUp(e, "question", q)}
                       onPointerCancel={(e) => onPinPointerUp(e, "question", q, false)}
+                      onPointerEnter={() => onPinHoverStart("question", q)}
+                      onPointerLeave={onPinHoverEnd}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -2080,7 +2148,7 @@ export default function PdfViewer({
                       data-note-marker
                       data-pin-id={n.id}
                       aria-label={n.content ? `笔记：${n.content}` : "笔记标记"}
-                      title={n.content || "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
+                      title={n.content.trim() ? undefined : "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
                       className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
                         isDragging
                           ? "cursor-grabbing border-[#475569] bg-[#e2e8f0] text-[#334155]"
@@ -2100,6 +2168,8 @@ export default function PdfViewer({
                       onPointerMove={(e) => onPinPointerMove(e, "note")}
                       onPointerUp={(e) => onPinPointerUp(e, "note", n)}
                       onPointerCancel={(e) => onPinPointerUp(e, "note", n, false)}
+                      onPointerEnter={() => onPinHoverStart("note", n)}
+                      onPointerLeave={onPinHoverEnd}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -2120,7 +2190,7 @@ export default function PdfViewer({
                       data-bookmark-marker
                       data-pin-id={b.id}
                       aria-label={b.content ? `书签：${b.content}` : "书签"}
-                      title={b.content || "拖动移动 · 双击进入编辑界面 · 右键删除"}
+                      title={b.content.trim() ? undefined : "拖动移动 · 双击进入编辑界面 · 右键删除"}
                       className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
                         isDragging
                           ? "cursor-grabbing border-[#9a3412] bg-[#ffedd5] text-[#9a3412]"
@@ -2136,6 +2206,8 @@ export default function PdfViewer({
                       onPointerMove={(e) => onPinPointerMove(e, "bookmark")}
                       onPointerUp={(e) => onPinPointerUp(e, "bookmark", b, false)}
                       onPointerCancel={(e) => onPinPointerUp(e, "bookmark", b, false)}
+                      onPointerEnter={() => onPinHoverStart("bookmark", b)}
+                      onPointerLeave={onPinHoverEnd}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -2146,6 +2218,7 @@ export default function PdfViewer({
                     </button>
                   );
                 })}
+                {hoveredPinItem ? <PinMarkdownPreview pin={hoveredPinItem} /> : null}
                 {activePin && activePinItem && activePinItem.pageNumber === pageNumber ? (
                   <div
                     ref={pinEditorRef}
