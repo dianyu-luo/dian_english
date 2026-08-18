@@ -230,28 +230,43 @@ function BookmarkMarkerIcon() {
   );
 }
 
-function PinMarkdownPreview({ pin }: { pin: PdfPin }) {
+function PinMarkdownPreview({
+  pin,
+  onPointerEnter,
+  onPointerLeave,
+}: {
+  pin: PdfPin;
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
+}) {
   const content = pin.content.trim();
   if (!content) return null;
   const flipLeft = pin.rectLeft + pin.rectWidth > 0.65;
   const flipUp = pin.rectTop > 0.58;
   return (
     <div
-      className="pointer-events-none absolute z-[35] w-72 max-h-72 overflow-hidden border border-[#d6d3d1] bg-[#faf8f4] px-3 py-2 shadow-md"
+      className="absolute z-[35]"
       style={{
-        left: flipLeft
-          ? `${pin.rectLeft * 100}%`
-          : `${(pin.rectLeft + pin.rectWidth) * 100}%`,
+        left: flipLeft ? `${pin.rectLeft * 100}%` : `${(pin.rectLeft + pin.rectWidth) * 100}%`,
         top: `${pin.rectTop * 100}%`,
         transform: [
-          flipLeft ? "translateX(calc(-100% - 8px))" : "translateX(8px)",
+          flipLeft ? "translateX(-100%)" : "",
           flipUp ? "translateY(calc(-100% + 8px))" : "",
         ]
           .filter(Boolean)
           .join(" "),
       }}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+      }}
     >
-      <Markdown content={content} fontSize={13} />
+      <div className={flipLeft ? "pr-2" : "pl-2"}>
+        <div className="max-h-72 w-72 overflow-y-auto border border-[#d6d3d1] bg-[#faf8f4] px-3 py-2 shadow-md">
+          <Markdown content={content} fontSize={13} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -453,6 +468,8 @@ export default function PdfViewer({
   } | null>(null);
   const lastPinClickRef = useRef<{ key: string; time: number } | null>(null);
   const hoverPinTimerRef = useRef<number | null>(null);
+  const hoveredPinRef = useRef(hoveredPin);
+  hoveredPinRef.current = hoveredPin;
   const onWordSelectRef = useRef(onWordSelect);
   const onRecentChangeRef = useRef(onRecentChange);
   const onWordMarksChangeRef = useRef(onWordMarksChange);
@@ -873,6 +890,8 @@ export default function PdfViewer({
         return;
       }
       clearHoverPinTimer();
+      const current = hoveredPinRef.current;
+      if (current?.kind === kind && current.id === pin.id) return;
       hoverPinTimerRef.current = window.setTimeout(() => {
         setHoveredPin({ kind, id: pin.id });
       }, 160);
@@ -882,7 +901,9 @@ export default function PdfViewer({
 
   const onPinHoverEnd = useCallback(() => {
     clearHoverPinTimer();
-    setHoveredPin(null);
+    hoverPinTimerRef.current = window.setTimeout(() => {
+      setHoveredPin(null);
+    }, 200);
   }, [clearHoverPinTimer]);
 
   useEffect(() => () => clearHoverPinTimer(), [clearHoverPinTimer]);
@@ -2099,6 +2120,8 @@ export default function PdfViewer({
                     draggingPin?.kind === "question" && draggingPin.id === q.id;
                   const isActive =
                     activePin?.kind === "question" && activePin.id === q.id;
+                  const isHovered =
+                    hoveredPin?.kind === "question" && hoveredPin.id === q.id;
                   return (
                     <button
                       key={`q-${q.id}`}
@@ -2115,7 +2138,7 @@ export default function PdfViewer({
                             : q.content
                               ? "cursor-grab border-[#d97706] bg-[#fffbeb] text-[#b45309]"
                               : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
-                      }`}
+                      } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
                       style={{
                         left: `${q.rectLeft * 100}%`,
                         top: `${q.rectTop * 100}%`,
@@ -2141,6 +2164,7 @@ export default function PdfViewer({
                 {pageNotes.map((n) => {
                   const isDragging = draggingPin?.kind === "note" && draggingPin.id === n.id;
                   const isActive = activePin?.kind === "note" && activePin.id === n.id;
+                  const isHovered = hoveredPin?.kind === "note" && hoveredPin.id === n.id;
                   return (
                     <button
                       key={`n-${n.id}`}
@@ -2157,7 +2181,7 @@ export default function PdfViewer({
                             : n.content
                               ? "cursor-grab border-[#64748b] bg-[#f1f5f9] text-[#475569]"
                               : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
-                      }`}
+                      } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
                       style={{
                         left: `${n.rectLeft * 100}%`,
                         top: `${n.rectTop * 100}%`,
@@ -2183,6 +2207,8 @@ export default function PdfViewer({
                 {pageBookmarks.map((b) => {
                   const isDragging =
                     draggingPin?.kind === "bookmark" && draggingPin.id === b.id;
+                  const isHovered =
+                    hoveredPin?.kind === "bookmark" && hoveredPin.id === b.id;
                   return (
                     <button
                       key={`b-${b.id}`}
@@ -2195,7 +2221,7 @@ export default function PdfViewer({
                         isDragging
                           ? "cursor-grabbing border-[#9a3412] bg-[#ffedd5] text-[#9a3412]"
                           : "cursor-grab border-[#ea580c] bg-[#fff7ed] text-[#c2410c]"
-                      }`}
+                      } ${isDragging || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
                       style={{
                         left: `${b.rectLeft * 100}%`,
                         top: `${b.rectTop * 100}%`,
@@ -2218,7 +2244,13 @@ export default function PdfViewer({
                     </button>
                   );
                 })}
-                {hoveredPinItem ? <PinMarkdownPreview pin={hoveredPinItem} /> : null}
+                {hoveredPinItem ? (
+                  <PinMarkdownPreview
+                    pin={hoveredPinItem}
+                    onPointerEnter={() => onPinHoverStart(hoveredPinItem.type, hoveredPinItem)}
+                    onPointerLeave={onPinHoverEnd}
+                  />
+                ) : null}
                 {activePin && activePinItem && activePinItem.pageNumber === pageNumber ? (
                   <div
                     ref={pinEditorRef}
