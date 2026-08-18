@@ -91,7 +91,7 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
   }, [canSave]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+    <div className="flex h-full min-h-0 flex-1 flex-col md:flex-row">
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-baseline justify-between gap-3 px-5 pt-3">
           <p className="text-[11px] tracking-wide text-[#a8a29e] uppercase">Markdown</p>

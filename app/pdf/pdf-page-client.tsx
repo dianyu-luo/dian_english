@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 import type { PdfJumpRequest } from "./pdf-viewer";
 import PdfChat from "./pdf-chat";
@@ -151,7 +151,13 @@ function SidePanel({
   );
 }
 
-export default function PdfPageClient({ paused = false }: { paused?: boolean }) {
+export default function PdfPageClient({
+  paused = false,
+  noteSlot = null,
+}: {
+  paused?: boolean;
+  noteSlot?: ReactNode;
+}) {
   const [selected, setSelected] = useState<PdfWordSelectInfo | null>(null);
   const [saveMessage, setSaveMessage] = useState("");
   const [marks, setMarks] = useState<SavedMark[]>([]);
@@ -218,7 +224,7 @@ export default function PdfPageClient({ paused = false }: { paused?: boolean }) 
             <p className="text-lg font-semibold tracking-tight">NE</p>
             <span className="hidden text-[#d6d3d1] sm:inline">/</span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">PDF 阅读</p>
+              <p className="truncate text-sm font-medium">{paused ? "笔记" : "PDF 阅读"}</p>
               {recent ? (
                 <p className="truncate text-xs text-[#78716c]">
                   {recent.fileName}
@@ -226,7 +232,9 @@ export default function PdfPageClient({ paused = false }: { paused?: boolean }) 
                   {saveMessage ? <span className="text-[#57534e]"> · {saveMessage}</span> : null}
                 </p>
               ) : (
-                <p className="text-xs text-[#78716c]">打开 PDF 后自动续读</p>
+                <p className="text-xs text-[#78716c]">
+                  {paused ? "编辑 Markdown 笔记" : "打开 PDF 后自动续读"}
+                </p>
               )}
             </div>
           </div>
@@ -238,6 +246,11 @@ export default function PdfPageClient({ paused = false }: { paused?: boolean }) 
             >
               对话
             </button>
+            {paused ? (
+              <Link href="/pdf" className="text-sm text-[#78716c] hover:text-[#1c1917]">
+                返回 PDF
+              </Link>
+            ) : null}
             <Link href="/" className="text-sm text-[#78716c] hover:text-[#1c1917]">
               返回首页
             </Link>
@@ -247,14 +260,30 @@ export default function PdfPageClient({ paused = false }: { paused?: boolean }) 
 
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
-          <PdfViewer
-            fillHeight
-            paused={paused}
-            onWordSelect={handleWordSelect}
-            onRecentChange={setRecent}
-            onWordMarksChange={() => void loadMarks(recent?.fileName)}
-            jumpRequest={jumpRequest}
-          />
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div
+              className={
+                paused
+                  ? "invisible pointer-events-none absolute inset-0 flex min-h-0 flex-col"
+                  : "flex h-full min-h-0 flex-1 flex-col"
+              }
+              aria-hidden={paused}
+            >
+              <PdfViewer
+                fillHeight
+                paused={paused}
+                onWordSelect={handleWordSelect}
+                onRecentChange={setRecent}
+                onWordMarksChange={() => void loadMarks(recent?.fileName)}
+                jumpRequest={jumpRequest}
+              />
+            </div>
+            {noteSlot ? (
+              <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border border-[#e7e2d9] bg-[#efebe4]">
+                {noteSlot}
+              </div>
+            ) : null}
+          </div>
         </main>
 
         <aside className="hidden w-[380px] shrink-0 border-l border-[#e7e2d9] lg:flex lg:flex-col">
