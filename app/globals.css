@@ -27,12 +27,12 @@ body {
 }
 
 /* Tailwind preflight / 行高会破坏 KaTeX：隔离并恢复公式布局 */
-.chat-md {
+.markdown {
   line-height: 1.7;
   overflow: visible;
 }
 
-.chat-md .katex {
+.markdown .katex {
   font-size: 1.1em;
   line-height: normal;
   text-indent: 0;
@@ -46,7 +46,7 @@ body {
   text-rendering: auto;
 }
 
-.chat-md .katex * {
+.markdown .katex * {
   border-color: currentColor;
   letter-spacing: normal;
   word-wrap: normal;
@@ -55,7 +55,7 @@ body {
 }
 
 /* 防止 MathML 与 HTML 叠字（部分环境会把隐藏样式冲掉） */
-.chat-md .katex .katex-mathml {
+.markdown .katex .katex-mathml {
   position: absolute !important;
   clip: rect(1px, 1px, 1px, 1px) !important;
   padding: 0 !important;
@@ -66,7 +66,7 @@ body {
   white-space: nowrap !important;
 }
 
-.chat-md .katex-display {
+.markdown .katex-display {
   display: block;
   margin: 0.85em 0;
   padding: 0.4em 0;
@@ -75,25 +75,25 @@ body {
   text-align: center;
 }
 
-.chat-md .katex-display > .katex {
+.markdown .katex-display > .katex {
   display: inline-block;
   text-align: initial;
   max-width: none;
 }
 
-.chat-md .katex-display-wrap,
-.chat-md .katex-inline-wrap {
+.markdown .katex-display-wrap,
+.markdown .katex-inline-wrap {
   position: relative;
 }
 
-.chat-md .katex-display-wrap {
+.markdown .katex-display-wrap {
   display: block;
   margin: 0.85em 0;
   padding: 0.45em 1.75rem 0.4em 0;
   text-align: center;
 }
 
-.chat-md .katex-inline-wrap {
+.markdown .katex-inline-wrap {
   display: inline-block;
   max-width: 100%;
   padding: 0 0.12em;
@@ -101,8 +101,8 @@ body {
 }
 
 /* 行内分数需要更高行高，避免与上下文字重叠 */
-.chat-md p:has(.katex),
-.chat-md li:has(.katex) {
+.markdown p:has(.katex),
+.markdown li:has(.katex) {
   line-height: 2.15;
   overflow: visible;
 }

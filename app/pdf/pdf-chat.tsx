@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ChatMarkdown } from "./chat-markdown";
+import { ChatContent } from "./chat-content";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 
 export type ChatMessage = {
@@ -344,7 +344,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
               }`}
             >
               {m.role === "assistant" ? (
-                <ChatMarkdown content={m.content} streaming={m.streaming} />
+                <ChatContent content={m.content} streaming={m.streaming} />
               ) : (
                 m.content
               )}

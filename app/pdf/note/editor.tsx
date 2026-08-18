@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useState } from "react";
-import { ChatMarkdown } from "../chat-markdown";
+import { Markdown } from "../markdown";
 
 type NoteEditorProps = {
   initialValue?: string;
@@ -32,7 +32,7 @@ export function NoteEditor({ initialValue = "" }: NoteEditorProps) {
         </p>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
           {preview.trim() ? (
-            <ChatMarkdown content={preview} />
+            <Markdown content={preview} />
           ) : (
             <p className="text-sm text-[#a8a29e]">预览会显示在这里</p>
           )}

@@ -211,26 +211,22 @@ function prepareMarkdown(src: string) {
   return normalizeLatexDelimiters(unwrapMathFromCode(src));
 }
 
-type ChatMarkdownProps = {
+type MarkdownProps = {
   content: string;
-  streaming?: boolean;
+  children?: ReactNode;
 };
 
-export function ChatMarkdown({ content, streaming }: ChatMarkdownProps) {
-  if (!content.trim()) {
-    return streaming ? <span className="text-[#a8a29e]">思考中…</span> : null;
-  }
+export function Markdown({ content, children }: MarkdownProps) {
+  if (!content.trim()) return null;
 
   const markdown = prepareMarkdown(content);
 
   return (
-    <div className="chat-md text-sm text-[#292524]">
+    <div className="markdown text-sm text-[#292524]">
       <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} components={components}>
         {markdown}
       </ReactMarkdown>
-      {streaming ? (
-        <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-[#a8a29e] align-middle" />
-      ) : null}
+      {children}
     </div>
   );
 }
