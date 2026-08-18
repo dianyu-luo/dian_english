@@ -2131,6 +2131,12 @@ export default function PdfViewer({
                         </button>
                         <button
                           type="button"
+                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
                           disabled={pinSaving}
                           onClick={() => void savePinContent()}
                           className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
@@ -2191,6 +2197,12 @@ export default function PdfViewer({
                           className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
                         >
                           取消
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
+                        >
+                          编辑
                         </button>
                         <button
                           type="button"
