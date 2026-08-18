@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { Markdown } from "../markdown";
 
@@ -91,9 +92,15 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
   }, [canSave]);
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col md:flex-row">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col md:flex-row">
+      <Link
+        href="/pdf"
+        className="absolute top-2 right-2 z-10 px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
+      >
+        关闭
+      </Link>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-baseline justify-between gap-3 px-5 pt-3">
+        <div className="flex shrink-0 items-baseline justify-between gap-3 px-5 pt-3 pr-14">
           <p className="text-[11px] tracking-wide text-[#a8a29e] uppercase">Markdown</p>
           {canSave ? (
             <p className="text-[11px] text-[#a8a29e]">
@@ -117,7 +124,7 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
       </section>
       <div className="h-px shrink-0 bg-[#e7e2d9] md:h-auto md:w-px" aria-hidden />
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#faf8f4]">
-        <p className="shrink-0 px-5 pt-3 text-[11px] tracking-wide text-[#a8a29e] uppercase">
+        <p className="shrink-0 px-5 pt-3 pr-14 text-[11px] tracking-wide text-[#a8a29e] uppercase">
           预览
         </p>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">

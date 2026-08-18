@@ -77,7 +77,7 @@ function SidePanel({
         {(
           [
             { id: "chat" as const, label: "对话" },
-            { id: "marks" as const, label: `标记${marks.length ? ` · ${marks.length}` : ""}` },
+            // { id: "marks" as const, label: `标记${marks.length ? ` · ${marks.length}` : ""}` },
           ] as const
         ).map((tab) => (
           <button
