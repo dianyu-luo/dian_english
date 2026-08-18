@@ -69,7 +69,10 @@ export async function POST(request: Request) {
     !ALLOWED_TYPES.has(type) ||
     !isFiniteNumber(pageNumber) ||
     pageNumber < 1 ||
-    ![x1, y1, x2, y2].every(isFiniteNumber)
+    !isFiniteNumber(x1) ||
+    !isFiniteNumber(y1) ||
+    !isFiniteNumber(x2) ||
+    !isFiniteNumber(y2)
   ) {
     return NextResponse.json({ ok: false, error: "缺少必要字段" }, { status: 400 });
   }
