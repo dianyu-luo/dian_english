@@ -48,6 +48,8 @@ type PdfViewerProps = {
   jumpRequest?: PdfJumpRequest | null;
   /** 填满父容器高度（侧栏布局用） */
   fillHeight?: boolean;
+  /** 笔记页盖住阅读器时暂停，返回后刷新标记 */
+  paused?: boolean;
 };
 
 type PinKind = "question" | "note" | "bookmark";
@@ -330,14 +332,19 @@ async function fetchRecentByFileName(fileName: string): Promise<RecentItem | nul
   return data.item as RecentItem;
 }
 
-function noteEditorHref(word: string, body = "") {
+function noteEditorHref(opts: {
+  kind: "word" | PinKind;
+  id: number;
+  word?: string;
+  body?: string;
+}) {
   const params = new URLSearchParams();
-  const title = word.trim();
-  const text = body.trim();
+  params.set("kind", opts.kind);
+  params.set("id", String(opts.id));
+  const title = opts.word?.trim();
   if (title) params.set("word", title);
-  if (text) params.set("body", text);
-  const qs = params.toString();
-  return qs ? `/pdf/note?${qs}` : "/pdf/note";
+  if (opts.body) params.set("body", opts.body);
+  return `/pdf/note?${params}`;
 }
 
 export default function PdfViewer({
@@ -346,6 +353,7 @@ export default function PdfViewer({
   onWordMarksChange,
   jumpRequest,
   fillHeight = false,
+  paused = false,
 }: PdfViewerProps) {
   const router = useRouter();
   const [file, setFile] = useState<PdfSource>(null);
@@ -891,6 +899,16 @@ export default function PdfViewer({
     closeWordMarkEditor,
     closeSelectionMenu,
   ]);
+
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    const wasPaused = pausedRef.current;
+    pausedRef.current = paused;
+    if (!wasPaused || paused || !fileName) return;
+    void loadPins(fileName);
+    void loadWordMarks(fileName);
+    onWordMarksChangeRef.current?.();
+  }, [paused, fileName, loadPins, loadWordMarks]);
 
   const getPageNormPoint = useCallback((clientX: number, clientY: number): NormPoint | null => {
     const pageEl =
@@ -2152,7 +2170,12 @@ export default function PdfViewer({
                                 : activePin.kind === "bookmark"
                                   ? "书签"
                                   : "笔记";
-                            const href = noteEditorHref(title, pinDraft);
+                            const href = noteEditorHref({
+                              kind: activePin.kind,
+                              id: activePin.id,
+                              word: title,
+                              body: pinDraft,
+                            });
                             closePinEditor();
                             router.push(href);
                           }}
@@ -2227,7 +2250,12 @@ export default function PdfViewer({
                         <button
                           type="button"
                           onClick={() => {
-                            const href = noteEditorHref(activeWordMarkItem.word, wordMarkDraft);
+                            const href = noteEditorHref({
+                              kind: "word",
+                              id: activeWordMarkItem.id,
+                              word: activeWordMarkItem.word,
+                              body: wordMarkDraft,
+                            });
                             closeWordMarkEditor();
                             router.push(href);
                           }}

@@ -151,7 +151,7 @@ function SidePanel({
   );
 }
 
-export default function PdfPageClient() {
+export default function PdfPageClient({ paused = false }: { paused?: boolean }) {
   const [selected, setSelected] = useState<PdfWordSelectInfo | null>(null);
   const [saveMessage, setSaveMessage] = useState("");
   const [marks, setMarks] = useState<SavedMark[]>([]);
@@ -249,6 +249,7 @@ export default function PdfPageClient() {
         <main className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
           <PdfViewer
             fillHeight
+            paused={paused}
             onWordSelect={handleWordSelect}
             onRecentChange={setRecent}
             onWordMarksChange={() => void loadMarks(recent?.fileName)}

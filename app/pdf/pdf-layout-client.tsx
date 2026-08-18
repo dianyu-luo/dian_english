@@ -19,7 +19,7 @@ export default function PdfLayoutClient({ children }: { children: ReactNode }) {
         }
         aria-hidden={isNote}
       >
-        <PdfPageClient />
+        <PdfPageClient paused={isNote} />
       </div>
       {children}
     </div>
