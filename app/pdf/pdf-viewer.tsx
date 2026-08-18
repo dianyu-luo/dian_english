@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -329,6 +330,16 @@ async function fetchRecentByFileName(fileName: string): Promise<RecentItem | nul
   return data.item as RecentItem;
 }
 
+function noteEditorHref(word: string, body = "") {
+  const params = new URLSearchParams();
+  const title = word.trim();
+  const text = body.trim();
+  if (title) params.set("word", title);
+  if (text) params.set("body", text);
+  const qs = params.toString();
+  return qs ? `/pdf/note?${qs}` : "/pdf/note";
+}
+
 export default function PdfViewer({
   onWordSelect,
   onRecentChange,
@@ -336,6 +347,7 @@ export default function PdfViewer({
   jumpRequest,
   fillHeight = false,
 }: PdfViewerProps) {
+  const router = useRouter();
   const [file, setFile] = useState<PdfSource>(null);
   const [fileName, setFileName] = useState("");
   const [numPages, setNumPages] = useState(0);
@@ -2132,6 +2144,18 @@ export default function PdfViewer({
                         </button>
                         <button
                           type="button"
+                          onClick={() => {
+                            if (!activePin) return;
+                            const title =
+                              activePin.kind === "question"
+                                ? "问题"
+                                : activePin.kind === "bookmark"
+                                  ? "书签"
+                                  : "笔记";
+                            const href = noteEditorHref(title, pinDraft);
+                            closePinEditor();
+                            router.push(href);
+                          }}
                           className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
                         >
                           编辑
@@ -2202,6 +2226,11 @@ export default function PdfViewer({
                         </button>
                         <button
                           type="button"
+                          onClick={() => {
+                            const href = noteEditorHref(activeWordMarkItem.word, wordMarkDraft);
+                            closeWordMarkEditor();
+                            router.push(href);
+                          }}
                           className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
                         >
                           编辑

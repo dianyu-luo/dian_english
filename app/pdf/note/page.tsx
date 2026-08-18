@@ -8,6 +8,8 @@ function NoteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const word = (searchParams.get("word") ?? "").trim();
+  const body = searchParams.get("body") ?? "";
+  const initialValue = [word ? `# ${word}` : "", body].filter(Boolean).join("\n\n");
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-[#f6f4ef] text-[#1c1917]">
@@ -24,7 +26,7 @@ function NoteContent() {
         </div>
       </header>
 
-      <NoteEditor key={word} initialValue={word ? `# ${word}\n\n` : ""} />
+      <NoteEditor key={searchParams.toString()} initialValue={initialValue ? `${initialValue}\n` : ""} />
     </div>
   );
 }
