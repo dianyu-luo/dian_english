@@ -2109,7 +2109,7 @@ export default function PdfViewer({
                       className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
                       autoFocus
                     />
-                    <div className="mt-1.5 flex items-center justify-between gap-1.5">
+                    <div className="mt-1.5 flex items-center gap-1">
                       <button
                         type="button"
                         disabled={pinSaving}
@@ -2121,7 +2121,8 @@ export default function PdfViewer({
                       >
                         删除
                       </button>
-                      <div className="flex gap-1.5">
+                      <span className="mx-0.5 h-3 w-px shrink-0 bg-[#e7e5e4]" aria-hidden />
+                      <div className="ml-auto flex items-center">
                         <button
                           type="button"
                           onClick={closePinEditor}
@@ -2138,11 +2139,11 @@ export default function PdfViewer({
                         <button
                           type="button"
                           disabled={pinSaving}
+                          title="Ctrl+Enter"
                           onClick={() => void savePinContent()}
-                          className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+                          className="ml-0.5 border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
                         >
                           {pinSaving ? "保存中…" : "保存"}
-                          <span className="ml-1 text-[10px] font-normal text-[#a8a29e]">⌃↵</span>
                         </button>
                       </div>
                     </div>
@@ -2181,7 +2182,7 @@ export default function PdfViewer({
                       className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
                       autoFocus
                     />
-                    <div className="mt-1.5 flex items-center justify-between gap-1.5">
+                    <div className="mt-1.5 flex items-center gap-1">
                       <button
                         type="button"
                         disabled={wordMarkSaving}
@@ -2190,7 +2191,8 @@ export default function PdfViewer({
                       >
                         删除
                       </button>
-                      <div className="flex gap-1.5">
+                      <span className="mx-0.5 h-3 w-px shrink-0 bg-[#e7e5e4]" aria-hidden />
+                      <div className="ml-auto flex items-center">
                         <button
                           type="button"
                           onClick={closeWordMarkEditor}
@@ -2207,11 +2209,11 @@ export default function PdfViewer({
                         <button
                           type="button"
                           disabled={wordMarkSaving}
+                          title="Ctrl+Enter"
                           onClick={() => void saveWordMarkNote()}
-                          className="border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+                          className="ml-0.5 border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
                         >
                           {wordMarkSaving ? "保存中…" : "保存"}
-                          <span className="ml-1 text-[10px] font-normal text-[#a8a29e]">⌃↵</span>
                         </button>
                       </div>
                     </div>
