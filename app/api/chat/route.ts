@@ -1,11 +1,13 @@
-import { deepseekConfig } from "@/lib/ai/config";
+import { deepseekConfig, glmConfig } from "@/lib/ai/config";
 import {
   createDeepseekChatStream,
   readStreamDelta,
   type ChatTurn,
 } from "@/lib/ai/deepseek";
+import { createGlmVisionStream, type GlmTurn } from "@/lib/ai/glm";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type IncomingMessage = {
   role?: string;
@@ -14,6 +16,7 @@ type IncomingMessage = {
 
 type ChatBody = {
   messages?: IncomingMessage[];
+  images?: string[];
   selection?: {
     word?: string;
     type?: string;
@@ -24,8 +27,11 @@ type ChatBody = {
   } | null;
 };
 
-function buildSystemPrompt(selection: ChatBody["selection"]): string {
-  const parts = [deepseekConfig.systemPrompt];
+const MAX_IMAGES = 4;
+const MAX_IMAGE_CHARS = 2_800_000;
+
+function buildSystemPrompt(selection: ChatBody["selection"], vision: boolean): string {
+  const parts = [vision ? glmConfig.systemPrompt : deepseekConfig.systemPrompt];
 
   if (selection?.word?.trim()) {
     parts.push(
@@ -47,14 +53,25 @@ function sse(data: unknown) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
-export async function POST(request: Request) {
-  if (!deepseekConfig.apiKey) {
-    return Response.json(
-      { ok: false, error: "未配置 DEEPSEEK_API_KEY。请在项目根目录创建 .env.local 并填写密钥。" },
-      { status: 500 },
-    );
+function normalizeImages(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const images: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const url = item.trim();
+    if (!url.startsWith("data:image/")) {
+      throw new Error("图片必须是 data:image 格式");
+    }
+    if (url.length > MAX_IMAGE_CHARS) {
+      throw new Error("单张图片过大，请压缩后再试");
+    }
+    images.push(url);
+    if (images.length >= MAX_IMAGES) break;
   }
+  return images;
+}
 
+export async function POST(request: Request) {
   let body: ChatBody;
   try {
     body = (await request.json()) as ChatBody;
@@ -62,25 +79,50 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "请求体必须是 JSON" }, { status: 400 });
   }
 
+  let images: string[] = [];
+  try {
+    images = normalizeImages(body.images);
+  } catch (err) {
+    return Response.json(
+      { ok: false, error: err instanceof Error ? err.message : "图片无效" },
+      { status: 400 },
+    );
+  }
+
+  const vision = images.length > 0;
+
+  if (vision && !glmConfig.apiKey) {
+    return Response.json(
+      { ok: false, error: "未配置 ZHIPU_API_KEY。图片 OCR 使用 GLM-4.6V-Flash，请在 .env.local 填写密钥。" },
+      { status: 500 },
+    );
+  }
+  if (!vision && !deepseekConfig.apiKey) {
+    return Response.json(
+      { ok: false, error: "未配置 DEEPSEEK_API_KEY。请在项目根目录创建 .env.local 并填写密钥。" },
+      { status: 500 },
+    );
+  }
+
   const incoming = Array.isArray(body.messages) ? body.messages : [];
   const history: ChatTurn[] = incoming
-    .filter(
-      (m): m is { role: "user" | "assistant"; content: string } =>
-        (m.role === "user" || m.role === "assistant") &&
-        typeof m.content === "string" &&
-        m.content.trim().length > 0,
-    )
+    .filter((m): m is { role: "user" | "assistant"; content: string } => {
+      if (m.role !== "user" && m.role !== "assistant") return false;
+      if (typeof m.content !== "string") return false;
+      return m.content.trim().length > 0;
+    })
     .map((m) => ({ role: m.role, content: m.content.trim() }))
     .slice(-20);
 
-  if (history.length === 0) {
+  const lastIncoming = incoming.at(-1);
+  const lastUserText =
+    lastIncoming?.role === "user" && typeof lastIncoming.content === "string"
+      ? lastIncoming.content.trim()
+      : "";
+
+  if (!vision && history.length === 0) {
     return Response.json({ ok: false, error: "messages 不能为空" }, { status: 400 });
   }
-
-  const messages: ChatTurn[] = [
-    { role: "system", content: buildSystemPrompt(body.selection ?? null) },
-    ...history,
-  ];
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -90,8 +132,24 @@ export async function POST(request: Request) {
       };
 
       try {
-        push({ type: "start", model: deepseekConfig.model });
-        const completion = await createDeepseekChatStream({ messages });
+        const model = vision ? glmConfig.model : deepseekConfig.model;
+        push({ type: "start", model });
+
+        const completion = vision
+          ? await createGlmVisionStream({
+              messages: buildVisionMessages({
+                history,
+                lastUserText,
+                images,
+                selection: body.selection ?? null,
+              }),
+            })
+          : await createDeepseekChatStream({
+              messages: [
+                { role: "system", content: buildSystemPrompt(body.selection ?? null, false) },
+                ...history,
+              ],
+            });
 
         for await (const chunk of completion) {
           if (request.signal.aborted) break;
@@ -118,4 +176,33 @@ export async function POST(request: Request) {
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+function buildVisionMessages({
+  history,
+  lastUserText,
+  images,
+  selection,
+}: {
+  history: ChatTurn[];
+  lastUserText: string;
+  images: string[];
+  selection: ChatBody["selection"];
+}): GlmTurn[] {
+  const text = lastUserText || glmConfig.defaultUserPrompt;
+  const last = history.at(-1);
+  const prior =
+    last?.role === "user" && last.content === lastUserText ? history.slice(0, -1) : history;
+
+  return [
+    { role: "system", content: buildSystemPrompt(selection, true) },
+    ...prior,
+    {
+      role: "user",
+      content: [
+        ...images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+        { type: "text" as const, text },
+      ],
+    },
+  ];
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
+import { blobToChatImage, type ChatImage } from "./chat-image";
 import { ChatContent } from "./chat-content";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 
@@ -11,6 +12,7 @@ export type ChatMessage = {
   content: string;
   createdAt: number;
   streaming?: boolean;
+  imageUrl?: string;
 };
 
 type PdfChatProps = {
@@ -77,16 +79,22 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
     {
       id: "welcome",
       role: "assistant",
-      content: "选中 PDF 里的单词或句子，然后在这里提问——解释、用法、造句都可以。",
+      content: "选中 PDF 文本提问，或上传 / 粘贴图片。公式会识别成 LaTeX。",
       createdAt: Date.now(),
     },
   ]);
   const [draft, setDraft] = useState("");
+  const [pendingImage, setPendingImage] = useState<ChatImage | null>(null);
+  const [attaching, setAttaching] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingImageRef = useRef<ChatImage | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  pendingImageRef.current = pendingImage;
   /** 本轮问答：把用户发言钉在对话区顶部，流式输出期间持续对齐 */
   const pinnedUserIdRef = useRef<string | null>(null);
   const stickPinRef = useRef(false);
@@ -122,9 +130,55 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
     };
   }, []);
 
+  const attachImage = useCallback(async (blob: Blob) => {
+    setAttaching(true);
+    setError(null);
+    try {
+      const image = await blobToChatImage(blob);
+      setPendingImage(image);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "图片处理失败");
+    } finally {
+      setAttaching(false);
+    }
+  }, []);
+
+  const onFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void attachImage(file);
+  };
+
+  const onPaste = (e: ClipboardEvent) => {
+    const fileFromList = e.clipboardData?.files?.[0];
+    if (fileFromList?.type.startsWith("image/")) {
+      e.preventDefault();
+      void attachImage(fileFromList);
+      return;
+    }
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        e.preventDefault();
+        void attachImage(file);
+        return;
+      }
+    }
+  };
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("image/"));
+    if (file) void attachImage(file);
+  };
+
   const send = async (text: string) => {
     const content = text.trim();
-    if (!content || sending) return;
+    const image = pendingImageRef.current;
+    if ((!content && !image) || sending || attaching) return;
 
     abortRef.current?.abort();
     const ac = new AbortController();
@@ -135,6 +189,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       role: "user",
       content,
       createdAt: Date.now(),
+      imageUrl: image?.previewUrl,
     };
     const assistantId = makeId();
     const nextMessages = [...messages, userMsg];
@@ -151,6 +206,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
       },
     ]);
     setDraft("");
+    setPendingImage(null);
     setError(null);
     setSending(true);
 
@@ -165,6 +221,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
         signal: ac.signal,
         body: JSON.stringify({
           messages: history,
+          images: image ? [image.dataUrl] : undefined,
           selection: selected
             ? {
                 word: selected.word,
@@ -265,7 +322,12 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#faf8f4]">
+    <div
+      className="flex h-full min-h-0 flex-col bg-[#faf8f4]"
+      onPaste={onPaste}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+    >
       {selected ? (
         <div className="shrink-0 border-b border-[#e7e2d9] bg-[#f6f4ef] px-4 py-2.5">
           <p className="text-[11px] tracking-wide text-[#a8a29e] uppercase">
@@ -346,7 +408,19 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
               {m.role === "assistant" ? (
                 <ChatContent content={m.content} streaming={m.streaming} />
               ) : (
-                m.content
+                <>
+                  {m.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={m.imageUrl}
+                      alt="上传的图片"
+                      className={`max-h-40 max-w-full object-contain ${m.content ? "mb-2" : ""}`}
+                    />
+                  ) : null}
+                  {m.content ? m.content : !m.imageUrl ? null : (
+                    <span className="text-xs text-[#a8a29e]">识别图片</span>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -354,22 +428,69 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
         {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
       </div>
 
-      <form onSubmit={onSubmit} className="shrink-0 border-t border-[#e7e2d9] p-3">
+      <form
+        onSubmit={onSubmit}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+        className="shrink-0 border-t border-[#e7e2d9] p-3"
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={onFileChange}
+        />
+        {pendingImage ? (
+          <div className="relative mb-2 inline-block max-w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={pendingImage.previewUrl}
+              alt="待发送图片"
+              className="max-h-28 max-w-full border border-[#d6d3d1] object-contain"
+            />
+            <button
+              type="button"
+              onClick={() => setPendingImage(null)}
+              className="absolute top-1 right-1 border border-[#d6d3d1] bg-white px-1.5 py-0.5 text-[11px] text-[#57534e] hover:bg-[#f0ebe3]"
+            >
+              移除
+            </button>
+          </div>
+        ) : null}
         <textarea
           ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           rows={3}
-          placeholder={selected ? `问关于「${selected.word.slice(0, 24)}」…` : "输入问题，Enter 发送"}
+          placeholder={
+            pendingImage
+              ? "补充问题（可空，直接发送即 OCR，公式转 LaTeX）"
+              : selected
+                ? `问关于「${selected.word.slice(0, 24)}」…`
+                : "输入问题，或粘贴 / 上传图片"
+          }
           className="w-full resize-none border border-[#d6d3d1] bg-white px-3 py-2 text-sm text-[#1c1917] outline-none placeholder:text-[#a8a29e] focus:border-[#a8a29e]"
         />
         <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-[11px] text-[#a8a29e]">Enter 发送 · Shift+Enter 换行</p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <button
+              type="button"
+              disabled={sending || attaching}
+              onClick={() => fileInputRef.current?.click()}
+              className="border border-[#d6d3d1] bg-white px-2 py-1 text-xs text-[#57534e] hover:bg-[#f0ebe3] disabled:opacity-50"
+            >
+              图片
+            </button>
+            <p className="truncate text-[11px] text-[#a8a29e]">
+              {attaching ? "处理图片中…" : "Enter 发送 · 可粘贴图片"}
+            </p>
+          </div>
           <button
             type="submit"
-            disabled={sending || !draft.trim()}
-            className="border border-[#d6d3d1] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-40"
+            disabled={sending || attaching || (!draft.trim() && !pendingImage)}
+            className="shrink-0 border border-[#d6d3d1] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-40"
           >
             {sending ? "生成中…" : "发送"}
           </button>
