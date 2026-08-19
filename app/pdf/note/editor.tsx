@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "../markdown";
 
 export type NoteSaveKind = "word" | "question" | "note" | "bookmark";
@@ -41,10 +41,44 @@ const FONT_MAX = 48;
 const FONT_STEP = 2;
 const FONT_DEFAULT = 14;
 const FONT_STORAGE_KEY = "pdf-note-font-size";
+const LINE_HEIGHT = 1.65;
+const EDITOR_PAD_X = 20;
+const EDITOR_PAD_TOP = 12;
 
 function clampFontSize(n: number) {
   const snapped = Math.round(n / FONT_STEP) * FONT_STEP;
   return Math.min(FONT_MAX, Math.max(FONT_MIN, snapped));
+}
+
+function firstDiffOffset(a: string, b: string) {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i += 1;
+  return i;
+}
+
+function scrollPreviewToNewContent(container: HTMLElement, prev: string, next: string) {
+  const markdown = container.querySelector(".markdown");
+  if (!markdown) return;
+
+  const padBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
+  const contentHeight = Math.max(0, container.scrollHeight - padBottom);
+  const offset = firstDiffOffset(prev, next);
+  const nearEnd = next.length === 0 || offset >= prev.length || offset >= next.length * 0.85;
+
+  let y = contentHeight;
+  if (nearEnd) {
+    const last = markdown.lastElementChild as HTMLElement | null;
+    if (last) {
+      const cRect = container.getBoundingClientRect();
+      const tRect = last.getBoundingClientRect();
+      y = tRect.bottom - cRect.top + container.scrollTop;
+    }
+  } else if (next.length > 0) {
+    y = contentHeight * (offset / next.length);
+  }
+
+  container.scrollTop = Math.max(0, y - container.clientHeight / 2);
 }
 
 export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorProps) {
@@ -57,6 +91,10 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
   const lastSavedRef = useRef<string | null>(null);
   const saveKindRef = useRef(saveKind);
   const saveIdRef = useRef(saveId);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const lastPreviewRef = useRef(preview);
+  const skipPreviewFollowRef = useRef(true);
   rawRef.current = raw;
   saveKindRef.current = saveKind;
   saveIdRef.current = saveId;
@@ -134,6 +172,55 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [router]);
 
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const sync = () => {
+      const line = fontSize * LINE_HEIGHT;
+      const pad = Math.max(0, el.clientHeight - EDITOR_PAD_TOP - line);
+      el.style.paddingBottom = `${pad}px`;
+    };
+
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fontSize]);
+
+  useLayoutEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+
+    const sync = () => {
+      const line = fontSize * LINE_HEIGHT;
+      const pad = Math.max(0, el.clientHeight - EDITOR_PAD_TOP - line);
+      el.style.paddingBottom = `${pad}px`;
+    };
+
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fontSize]);
+
+  useLayoutEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+
+    if (skipPreviewFollowRef.current) {
+      skipPreviewFollowRef.current = false;
+      lastPreviewRef.current = preview;
+      return;
+    }
+
+    if (preview === lastPreviewRef.current) return;
+    const prev = lastPreviewRef.current;
+    lastPreviewRef.current = preview;
+    if (!preview.trim()) return;
+    scrollPreviewToNewContent(el, prev, preview);
+  }, [preview]);
+
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col md:flex-row">
       <Link
@@ -181,12 +268,19 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
           </div>
         </div>
         <textarea
+          ref={textareaRef}
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
           placeholder="输入 Markdown…"
           spellCheck={false}
-          style={{ fontSize, lineHeight: 1.65 }}
-          className="min-h-0 flex-1 resize-none bg-transparent px-5 py-3 font-mono text-[#1c1917] outline-none placeholder:text-[#a8a29e]"
+          style={{
+            fontSize,
+            lineHeight: LINE_HEIGHT,
+            paddingLeft: EDITOR_PAD_X,
+            paddingRight: EDITOR_PAD_X,
+            paddingTop: EDITOR_PAD_TOP,
+          }}
+          className="min-h-0 flex-1 resize-none bg-transparent font-mono text-[#1c1917] outline-none placeholder:text-[#a8a29e]"
         />
       </section>
       <div className="h-px shrink-0 bg-[#e7e2d9] md:h-auto md:w-px" aria-hidden />
@@ -194,7 +288,7 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
         <p className="shrink-0 px-5 pt-3 pr-14 text-[11px] tracking-wide text-[#a8a29e] uppercase">
           预览
         </p>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+        <div ref={previewRef} className="min-h-0 flex-1 overflow-y-auto px-5 pt-3">
           {preview.trim() ? (
             <Markdown content={preview} fontSize={fontSize} />
           ) : (
