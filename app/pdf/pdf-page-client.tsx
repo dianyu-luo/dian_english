@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 import type { PdfJumpRequest } from "./pdf-viewer";
 import PdfChat from "./pdf-chat";
@@ -41,6 +41,16 @@ type RecentItem = {
 };
 
 type SideTab = "chat" | "marks";
+
+const SIDE_WIDTH_KEY = "ne-chat-side-width";
+const DEFAULT_SIDE_WIDTH = 380;
+const MIN_SIDE_WIDTH = 280;
+const MIN_MAIN_WIDTH = 360;
+
+function clampSideWidth(width: number, viewport = typeof window === "undefined" ? 1280 : window.innerWidth) {
+  const max = Math.max(MIN_SIDE_WIDTH, viewport - MIN_MAIN_WIDTH);
+  return Math.min(max, Math.max(MIN_SIDE_WIDTH, Math.round(width)));
+}
 
 function typeLabel(type: string) {
   return type === "sentence" ? "句子" : "单词";
@@ -165,6 +175,80 @@ export default function PdfPageClient({
   const [jumpRequest, setJumpRequest] = useState<PdfJumpRequest | null>(null);
   const [sideTab, setSideTab] = useState<SideTab>("chat");
   const [mobileSideOpen, setMobileSideOpen] = useState(false);
+  const [sideWidth, setSideWidth] = useState(DEFAULT_SIDE_WIDTH);
+  const [resizing, setResizing] = useState(false);
+  const sideWidthRef = useRef(sideWidth);
+  sideWidthRef.current = sideWidth;
+
+  useLayoutEffect(() => {
+    try {
+      const stored = Number(localStorage.getItem(SIDE_WIDTH_KEY));
+      if (Number.isFinite(stored) && stored > 0) {
+        const next = clampSideWidth(stored);
+        sideWidthRef.current = next;
+        setSideWidth(next);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => {
+      setSideWidth((w) => {
+        const next = clampSideWidth(w);
+        sideWidthRef.current = next;
+        return next;
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const persistSideWidth = useCallback((width: number) => {
+    try {
+      localStorage.setItem(SIDE_WIDTH_KEY, String(width));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const onSideResizePointerDown = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = sideWidthRef.current;
+      setResizing(true);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+
+      const onMove = (ev: globalThis.PointerEvent) => {
+        const next = clampSideWidth(startW + (startX - ev.clientX));
+        sideWidthRef.current = next;
+        setSideWidth(next);
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.removeProperty("cursor");
+        document.body.style.removeProperty("user-select");
+        setResizing(false);
+        persistSideWidth(sideWidthRef.current);
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [persistSideWidth],
+  );
+
+  const resetSideWidth = useCallback(() => {
+    const next = clampSideWidth(DEFAULT_SIDE_WIDTH);
+    sideWidthRef.current = next;
+    setSideWidth(next);
+    persistSideWidth(next);
+  }, [persistSideWidth]);
 
   const loadMarks = useCallback(async (fileName?: string) => {
     const qs = fileName ? `?fileName=${encodeURIComponent(fileName)}` : "";
@@ -286,7 +370,27 @@ export default function PdfPageClient({
           </div>
         </main>
 
-        <aside className="hidden w-[380px] shrink-0 border-l border-[#e7e2d9] lg:flex lg:flex-col">
+        <aside
+          className="relative hidden shrink-0 border-l border-[#e7e2d9] lg:flex lg:flex-col"
+          style={{ width: sideWidth }}
+        >
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="拖动调整对话栏宽度"
+            aria-valuenow={sideWidth}
+            aria-valuemin={MIN_SIDE_WIDTH}
+            title="拖动调整宽度 · 双击恢复默认"
+            onPointerDown={onSideResizePointerDown}
+            onDoubleClick={resetSideWidth}
+            className="group/resize absolute inset-y-0 -left-1 z-20 flex w-2 cursor-col-resize touch-none justify-center"
+          >
+            <span
+              className={`h-full w-px ${
+                resizing ? "bg-[#1c1917]" : "bg-transparent group-hover/resize:bg-[#a8a29e]"
+              }`}
+            />
+          </div>
           <SidePanel
             sideTab={sideTab}
             setSideTab={setSideTab}
@@ -296,6 +400,7 @@ export default function PdfPageClient({
             onMarkClick={handleMarkClick}
           />
         </aside>
+        {resizing ? <div className="fixed inset-0 z-[80] cursor-col-resize" /> : null}
       </div>
 
       {mobileSideOpen ? (
