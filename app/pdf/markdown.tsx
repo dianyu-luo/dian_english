@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { Components } from "react-markdown";
+import { prepareMarkdown } from "./markdown-prepare";
 // KaTeX CSS 在 globals.css 中统一引入
 
 function MathFormula({ tex, displayMode }: { tex: string; displayMode: boolean }) {
@@ -171,45 +172,6 @@ const components: Components = {
     <td className="border-t border-[#e7e2d9] px-2 py-1.5 text-[#44403c]">{children}</td>
   ),
 };
-
-/** 模型常把公式塞进代码块；拆出来交给 math 插件 */
-function unwrapMathFromCode(src: string) {
-  let out = src;
-
-  out = out.replace(/`(\$\$[^`]+\$\$|\$[^`$]+\$)`/g, "$1");
-  out = out.replace(/(^|\n)(?: {4}|\t)(\$\$[^$\n]+\$\$|\$[^$\n]+\$)[ \t]*(?=\n|$)/g, "$1\n$2\n");
-
-  out = out.replace(/```(?:latex|tex|math|katex)?\s*\n?([\s\S]*?)```/gi, (full, body: string) => {
-    const trimmed = body.trim();
-    if (!trimmed) return full;
-
-    if (/^\$\$[\s\S]*\$\$$/.test(trimmed)) {
-      return `\n${trimmed}\n`;
-    }
-    if (/^\$[^$]+\$/.test(trimmed) && trimmed.indexOf("$", 1) === trimmed.length - 1) {
-      return `\n$$\n${trimmed.slice(1, -1).trim()}\n$$\n`;
-    }
-    if (/^\\\[[\s\S]*\\\]$/.test(trimmed) || /^\\\([\s\S]*\\\)$/.test(trimmed)) {
-      return `\n${trimmed}\n`;
-    }
-    if (/\\[a-zA-Z]+|\^|_\{/.test(trimmed) && !trimmed.includes("```")) {
-      return `\n$$\n${trimmed}\n$$\n`;
-    }
-    return full;
-  });
-
-  return out;
-}
-
-function normalizeLatexDelimiters(src: string) {
-  return src
-    .replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string) => `\n$$\n${body.trim()}\n$$\n`)
-    .replace(/\\\(([\s\S]*?)\\\)/g, (_m, body: string) => `$${body.trim()}$`);
-}
-
-function prepareMarkdown(src: string) {
-  return normalizeLatexDelimiters(unwrapMathFromCode(src));
-}
 
 type MarkdownProps = {
   content: string;
