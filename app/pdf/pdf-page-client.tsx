@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { usePageDwell } from "@/lib/dwell/use-page-dwell";
 import type { PdfWordSelectInfo } from "./get-selected-word";
 import type { PdfJumpRequest } from "./pdf-viewer";
 import PdfChat from "./pdf-chat";
@@ -179,6 +180,12 @@ export default function PdfPageClient({
   const [resizing, setResizing] = useState(false);
   const sideWidthRef = useRef(sideWidth);
   sideWidthRef.current = sideWidth;
+
+  usePageDwell({
+    pagePath: "/pdf",
+    resourceKey: recent?.fileName ?? null,
+    enabled: !paused,
+  });
 
   useLayoutEffect(() => {
     try {

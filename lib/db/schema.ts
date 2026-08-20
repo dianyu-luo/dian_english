@@ -91,3 +91,25 @@ export const pdfAnnotations = sqliteTable("pdf_annotations", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/**
+ * 页面停留 / 学习时长：
+ * 打开或重新获得焦点开始一段；离开页面 / 切站 / 失焦结束一段。
+ */
+export const pageDwellSessions = sqliteTable("page_dwell_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** 客户端生成的一段连续计时 ID，用于心跳 upsert */
+  clientSessionId: text("client_session_id").notNull().unique(),
+  pagePath: text("page_path").notNull(),
+  /** 可选资源标识，如 PDF fileName */
+  resourceKey: text("resource_key"),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+  endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+  durationMs: integer("duration_ms").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
