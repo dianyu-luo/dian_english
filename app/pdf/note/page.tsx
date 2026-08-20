@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { NoteEditor, type NoteSaveKind } from "./editor";
 
-const SAVE_KINDS = new Set<NoteSaveKind>(["word", "question", "note", "bookmark"]);
+const SAVE_KINDS = new Set<NoteSaveKind>(["word", "question", "note", "bookmark", "todo"]);
 
 function parseSaveTarget(searchParams: URLSearchParams): { kind: NoteSaveKind; id: number } | null {
   const kind = searchParams.get("kind");

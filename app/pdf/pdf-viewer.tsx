@@ -53,7 +53,20 @@ type PdfViewerProps = {
   paused?: boolean;
 };
 
-type PinKind = "question" | "note" | "bookmark";
+type PinKind = "question" | "note" | "bookmark" | "todo";
+
+function pinKindLabel(kind: PinKind): string {
+  switch (kind) {
+    case "question":
+      return "问题";
+    case "note":
+      return "笔记";
+    case "bookmark":
+      return "书签";
+    case "todo":
+      return "待办";
+  }
+}
 
 type PdfPin = {
   id: number;
@@ -110,9 +123,7 @@ type PdfAnnotation = {
 };
 
 type MarkerMenuState =
-  | { x: number; y: number; kind: "question"; pin: PdfPin }
-  | { x: number; y: number; kind: "note"; pin: PdfPin }
-  | { x: number; y: number; kind: "bookmark"; pin: PdfPin }
+  | { x: number; y: number; kind: PinKind; pin: PdfPin }
   | { x: number; y: number; kind: "arrow"; annotation: PdfAnnotation };
 
 type DrawTool = "arrow" | null;
@@ -225,6 +236,24 @@ function BookmarkMarkerIcon() {
         strokeLinejoin="round"
         fill="currentColor"
         fillOpacity="0.18"
+      />
+    </svg>
+  );
+}
+
+function TodoMarkerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect
+        x="2.5"
+        y="2.5"
+        width="11"
+        height="11"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        fill="currentColor"
+        fillOpacity="0.12"
       />
     </svg>
   );
@@ -1157,7 +1186,7 @@ export default function PdfViewer({
       closeSelectionMenu();
       setAnnotateSubmenuOpen(false);
       const menuW = 140;
-      const menuH = 120;
+      const menuH = 160;
       const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
       const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
       setContextMenu({
@@ -1221,8 +1250,7 @@ export default function PdfViewer({
       closeContextMenu();
       closeWordMarkEditor();
       closeSelectionMenu();
-      const label =
-        kind === "question" ? "问题" : kind === "note" ? "笔记" : "书签";
+      const label = pinKindLabel(kind);
       try {
         const res = await fetch(PINS_API, {
           method: "POST",
@@ -1261,8 +1289,7 @@ export default function PdfViewer({
 
   const openPinMarkdownEditor = useCallback(
     (kind: PinKind, pin: PdfPin, body?: string) => {
-      const title =
-        kind === "question" ? "问题" : kind === "bookmark" ? "书签" : "笔记";
+      const title = pinKindLabel(kind);
       const href = noteEditorHref({
         kind,
         id: pin.id,
@@ -1439,12 +1466,7 @@ export default function PdfViewer({
   const deletePin = useCallback(
     async (kind: PinKind, pin: PdfPin) => {
       const preview = pin.content.trim() ? `\n「${pin.content.trim().slice(0, 40)}」` : "";
-      const confirmMsg =
-        kind === "question"
-          ? `确定删除这个问号标记吗？${preview}`
-          : kind === "note"
-            ? `确定删除这个笔记标记吗？${preview}`
-            : `确定删除这个书签吗？${preview}`;
+      const confirmMsg = `确定删除这个${pinKindLabel(kind)}吗？${preview}`;
       const ok = window.confirm(confirmMsg);
       if (!ok) return;
 
@@ -1642,7 +1664,7 @@ export default function PdfViewer({
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
       if (pinEditorRef.current?.contains(target)) return;
-      if ((target as Element).closest?.("[data-question-marker],[data-note-marker],[data-bookmark-marker]")) return;
+      if ((target as Element).closest?.("[data-question-marker],[data-note-marker],[data-bookmark-marker],[data-todo-marker]")) return;
       closePinEditor();
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1746,6 +1768,7 @@ export default function PdfViewer({
     { id: "note", label: "笔记" },
     { id: "question", label: "问题" },
     { id: "bookmark", label: "书签" },
+    { id: "todo", label: "待办" },
     { id: "annotate", label: "标注" },
     { id: "help", label: "帮助" },
   ] as const;
@@ -1773,6 +1796,11 @@ export default function PdfViewer({
 
   const pageBookmarks = useMemo(
     () => pins.filter((b) => b.type === "bookmark" && b.pageNumber === pageNumber),
+    [pins, pageNumber],
+  );
+
+  const pageTodos = useMemo(
+    () => pins.filter((t) => t.type === "todo" && t.pageNumber === pageNumber),
     [pins, pageNumber],
   );
 
@@ -2244,6 +2272,49 @@ export default function PdfViewer({
                     </button>
                   );
                 })}
+                {pageTodos.map((t) => {
+                  const isDragging = draggingPin?.kind === "todo" && draggingPin.id === t.id;
+                  const isActive = activePin?.kind === "todo" && activePin.id === t.id;
+                  const isHovered = hoveredPin?.kind === "todo" && hoveredPin.id === t.id;
+                  return (
+                    <button
+                      key={`t-${t.id}`}
+                      type="button"
+                      data-todo-marker
+                      data-pin-id={t.id}
+                      aria-label={t.content ? `待办：${t.content}` : "待办标记"}
+                      title={t.content.trim() ? undefined : "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
+                      className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
+                        isDragging
+                          ? "cursor-grabbing border-[#0f766e] bg-[#ccfbf1] text-[#115e59]"
+                          : isActive
+                            ? "cursor-grab border-[#0f766e] bg-[#ccfbf1] text-[#115e59]"
+                            : t.content
+                              ? "cursor-grab border-[#14b8a6] bg-[#f0fdfa] text-[#0f766e]"
+                              : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
+                      } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
+                      style={{
+                        left: `${t.rectLeft * 100}%`,
+                        top: `${t.rectTop * 100}%`,
+                        width: `${Math.max(t.rectWidth, 0.02) * 100}%`,
+                        height: `${Math.max(t.rectHeight, 0.02) * 100}%`,
+                      }}
+                      onPointerDown={(e) => onPinPointerDown(e, "todo", t)}
+                      onPointerMove={(e) => onPinPointerMove(e, "todo")}
+                      onPointerUp={(e) => onPinPointerUp(e, "todo", t)}
+                      onPointerCancel={(e) => onPinPointerUp(e, "todo", t, false)}
+                      onPointerEnter={() => onPinHoverStart("todo", t)}
+                      onPointerLeave={onPinHoverEnd}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onContextMenu={(e) => openMarkerMenu(e, { kind: "todo", pin: t })}
+                    >
+                      <TodoMarkerIcon />
+                    </button>
+                  );
+                })}
                 {hoveredPinItem ? (
                   <PinMarkdownPreview
                     pin={hoveredPinItem}
@@ -2274,7 +2345,13 @@ export default function PdfViewer({
                         }
                       }}
                       rows={3}
-                      placeholder={activePin.kind === "question" ? "输入问题…" : "输入笔记…"}
+                      placeholder={
+                        activePin.kind === "question"
+                          ? "输入问题…"
+                          : activePin.kind === "todo"
+                            ? "输入待办…"
+                            : "输入笔记…"
+                      }
                       className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
                       autoFocus
                     />
@@ -2510,16 +2587,13 @@ export default function PdfViewer({
                 role="menuitem"
                 className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
                 onClick={() => {
-                  if (item.id === "question") {
-                    void handleAddPin("question");
-                    return;
-                  }
-                  if (item.id === "note") {
-                    void handleAddPin("note");
-                    return;
-                  }
-                  if (item.id === "bookmark") {
-                    void handleAddPin("bookmark");
+                  if (
+                    item.id === "question" ||
+                    item.id === "note" ||
+                    item.id === "bookmark" ||
+                    item.id === "todo"
+                  ) {
+                    void handleAddPin(item.id);
                     return;
                   }
                   closeContextMenu();
@@ -2544,7 +2618,7 @@ export default function PdfViewer({
             role="menuitem"
             className="block w-full px-3 py-1.5 text-left text-sm text-[#b91c1c] hover:bg-[#fee2e2]"
             onClick={() => {
-              if (markerMenu.kind === "question" || markerMenu.kind === "note" || markerMenu.kind === "bookmark") {
+              if (markerMenu.kind !== "arrow") {
                 const { kind, pin } = markerMenu;
                 closeMarkerMenu();
                 void deletePin(kind, pin);

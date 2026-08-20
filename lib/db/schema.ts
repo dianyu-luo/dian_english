@@ -52,11 +52,11 @@ export const pdfWordMarks = sqliteTable("pdf_word_marks", {
     .$defaultFn(() => new Date()),
 });
 
-/** PDF 页内标记：问题 / 笔记 / 书签（type 区分） */
+/** PDF 页内标记：问题 / 笔记 / 书签 / 待办（type 区分） */
 export const pdfPins = sqliteTable("pdf_pins", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   fileName: text("file_name").notNull(),
-  type: text("type").notNull(), // question | note | bookmark
+  type: text("type").notNull(), // question | note | bookmark | todo
   pageNumber: integer("page_number").notNull(),
   rectLeft: real("rect_left").notNull(),
   rectTop: real("rect_top").notNull(),
