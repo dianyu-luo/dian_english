@@ -69,6 +69,8 @@ export function usePageDwell({
     if (!enabled || !pagePath) return;
 
     const resolvedKey = resourceKey ?? null;
+    // /pdf 未打开文件时不计时、不落库
+    if (pagePath === "/pdf" && resolvedKey == null) return;
     let clientSessionId = "";
     let startedAt = 0;
     let blurredAt: number | null = null;

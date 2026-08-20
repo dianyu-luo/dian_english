@@ -84,6 +84,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "缺少必要字段" }, { status: 400 });
   }
 
+  // /pdf 且未指定资源（未打开 PDF）时不写入
+  if (pagePath === "/pdf" && resourceKey == null) {
+    return NextResponse.json({ ok: true, skipped: true });
+  }
+
   if (endedAt != null && (!isFiniteNumber(endedAt) || endedAt < startedAt)) {
     return NextResponse.json({ ok: false, error: "endedAt 无效" }, { status: 400 });
   }
