@@ -155,6 +155,16 @@ function clamp01(n: number) {
   return Math.min(1, Math.max(0, n));
 }
 
+/** 固定像素边长，避免用页面百分比宽高在竖版 PDF 上变成椭圆 */
+function pinMarkerStyle(pin: { rectLeft: number; rectTop: number }) {
+  return {
+    left: `${pin.rectLeft * 100}%`,
+    top: `${pin.rectTop * 100}%`,
+    width: QUESTION_MARKER_PX,
+    height: QUESTION_MARKER_PX,
+  };
+}
+
 function readLastAnnotateTool(): AnnotateToolId | null {
   try {
     const value = localStorage.getItem(LAST_ANNOTATE_TOOL_KEY);
@@ -2378,12 +2388,7 @@ export default function PdfViewer({
                               ? "cursor-grab border-[#d97706] bg-[#fffbeb] text-[#b45309]"
                               : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
                       } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
-                      style={{
-                        left: `${q.rectLeft * 100}%`,
-                        top: `${q.rectTop * 100}%`,
-                        width: `${Math.max(q.rectWidth, 0.02) * 100}%`,
-                        height: `${Math.max(q.rectHeight, 0.02) * 100}%`,
-                      }}
+                      style={pinMarkerStyle(q)}
                       onPointerDown={(e) => onPinPointerDown(e, "question", q)}
                       onPointerMove={(e) => onPinPointerMove(e, "question")}
                       onPointerUp={(e) => onPinPointerUp(e, "question", q)}
@@ -2421,12 +2426,7 @@ export default function PdfViewer({
                               ? "cursor-grab border-[#64748b] bg-[#f1f5f9] text-[#475569]"
                               : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
                       } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
-                      style={{
-                        left: `${n.rectLeft * 100}%`,
-                        top: `${n.rectTop * 100}%`,
-                        width: `${Math.max(n.rectWidth, 0.02) * 100}%`,
-                        height: `${Math.max(n.rectHeight, 0.02) * 100}%`,
-                      }}
+                      style={pinMarkerStyle(n)}
                       onPointerDown={(e) => onPinPointerDown(e, "note", n)}
                       onPointerMove={(e) => onPinPointerMove(e, "note")}
                       onPointerUp={(e) => onPinPointerUp(e, "note", n)}
@@ -2461,12 +2461,7 @@ export default function PdfViewer({
                           ? "cursor-grabbing border-[#9a3412] bg-[#ffedd5] text-[#9a3412]"
                           : "cursor-grab border-[#ea580c] bg-[#fff7ed] text-[#c2410c]"
                       } ${isDragging || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
-                      style={{
-                        left: `${b.rectLeft * 100}%`,
-                        top: `${b.rectTop * 100}%`,
-                        width: `${Math.max(b.rectWidth, 0.02) * 100}%`,
-                        height: `${Math.max(b.rectHeight, 0.02) * 100}%`,
-                      }}
+                      style={pinMarkerStyle(b)}
                       onPointerDown={(e) => onPinPointerDown(e, "bookmark", b)}
                       onPointerMove={(e) => onPinPointerMove(e, "bookmark")}
                       onPointerUp={(e) => onPinPointerUp(e, "bookmark", b, false)}
@@ -2504,12 +2499,7 @@ export default function PdfViewer({
                               ? "cursor-grab border-[#14b8a6] bg-[#f0fdfa] text-[#0f766e]"
                               : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
                       } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
-                      style={{
-                        left: `${t.rectLeft * 100}%`,
-                        top: `${t.rectTop * 100}%`,
-                        width: `${Math.max(t.rectWidth, 0.02) * 100}%`,
-                        height: `${Math.max(t.rectHeight, 0.02) * 100}%`,
-                      }}
+                      style={pinMarkerStyle(t)}
                       onPointerDown={(e) => onPinPointerDown(e, "todo", t)}
                       onPointerMove={(e) => onPinPointerMove(e, "todo")}
                       onPointerUp={(e) => onPinPointerUp(e, "todo", t)}
