@@ -29,6 +29,12 @@ export default function Home() {
             >
               pdf
             </Link>
+            <Link
+              href="/activity"
+              className="inline-block border border-[#d6d3d1] bg-[#faf8f4] px-4 py-2 text-sm font-medium hover:bg-[#f0ebe3]"
+            >
+              浏览数据
+            </Link>
           </div>
         </section>
 
