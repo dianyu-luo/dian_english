@@ -1,11 +1,15 @@
 import Link from "next/link";
+import { formatDurationMs } from "@/lib/activity/format-duration";
+import { getActivitySummary } from "@/lib/activity/summary";
 
 export const metadata = {
   title: "浏览数据",
   description: "页面使用时间、最近访问与编辑",
 };
 
-export default function ActivityPage() {
+export default async function ActivityPage() {
+  const summary = await getActivitySummary();
+
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
       <header className="border-b border-[#e7e2d9] bg-[#faf8f4]/px-6 py-4">
@@ -24,22 +28,22 @@ export default function ActivityPage() {
         <section className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">浏览数据</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            查看页面使用时间、最近访问的文件，以及最近的编辑内容。功能开发中，以下为占位。
+            查看页面使用时间、最近访问的文件，以及最近的编辑内容。下方两项列表仍在占位。
           </p>
         </section>
 
         <section className="mt-10 grid gap-6 sm:grid-cols-3">
           <div className="border-t border-[#d6d3d1] pt-4">
             <p className="text-sm text-[#78716c]">今日使用时长</p>
-            <p className="mt-2 text-2xl font-medium">—</p>
+            <p className="mt-2 text-2xl font-medium">{formatDurationMs(summary.todayMs)}</p>
           </div>
           <div className="border-t border-[#d6d3d1] pt-4">
             <p className="text-sm text-[#78716c]">本周使用时长</p>
-            <p className="mt-2 text-2xl font-medium">—</p>
+            <p className="mt-2 text-2xl font-medium">{formatDurationMs(summary.weekMs)}</p>
           </div>
           <div className="border-t border-[#d6d3d1] pt-4">
             <p className="text-sm text-[#78716c]">访问文件数</p>
-            <p className="mt-2 text-2xl font-medium">—</p>
+            <p className="mt-2 text-2xl font-medium">{summary.fileCount}</p>
           </div>
         </section>
 
