@@ -60,6 +60,8 @@ type PdfViewerProps = {
 
 type PinKind = "question" | "note" | "bookmark" | "todo";
 
+const PIN_KINDS: readonly PinKind[] = ["note", "question", "bookmark", "todo"];
+
 function pinKindLabel(kind: PinKind): string {
   switch (kind) {
     case "question":
@@ -477,6 +479,7 @@ export default function PdfViewer({
   const [annotateSubmenuOpen, setAnnotateSubmenuOpen] = useState(false);
   const [lastAnnotateTool, setLastAnnotateTool] = useState<AnnotateToolId | null>(null);
   const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
+  const [pinTypeSubmenuOpen, setPinTypeSubmenuOpen] = useState(false);
   const [pins, setPins] = useState<PdfPin[]>([]);
   const [wordMarks, setWordMarks] = useState<PdfWordMark[]>([]);
   const [activePin, setActivePin] = useState<{ kind: PinKind; id: number } | null>(null);
@@ -967,7 +970,10 @@ export default function PdfViewer({
     setContextMenu(null);
     setAnnotateSubmenuOpen(false);
   }, []);
-  const closeMarkerMenu = useCallback(() => setMarkerMenu(null), []);
+  const closeMarkerMenu = useCallback(() => {
+    setMarkerMenu(null);
+    setPinTypeSubmenuOpen(false);
+  }, []);
   const closeSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
   const closePinEditor = useCallback(() => {
@@ -1288,10 +1294,13 @@ export default function PdfViewer({
       closeSelectionMenu();
       closePinEditor();
       closeWordMarkEditor();
-      const menuW = 120;
-      const menuH = 48;
+      const isPin = target.kind !== "arrow";
+      const menuW = isPin ? 132 : 120;
+      // pin：更改类型 + 删除
+      const menuH = isPin ? 72 : 48;
       const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
       const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+      setPinTypeSubmenuOpen(false);
       setMarkerMenu({
         x: Math.max(8, x),
         y: Math.max(8, y),
@@ -1559,6 +1568,39 @@ export default function PdfViewer({
       }
     },
     [closePinEditor, updatePins],
+  );
+
+  const changePinType = useCallback(
+    async (pin: PdfPin, nextType: PinKind) => {
+      if (pin.type === nextType) {
+        closeMarkerMenu();
+        return;
+      }
+      closeMarkerMenu();
+      try {
+        const res = await fetch(PINS_API, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: pin.id, type: nextType }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "修改类型失败");
+        }
+        const item = data.item as PdfPin;
+        updatePins((prev) => prev.map((row) => (row.id === item.id ? item : row)));
+        setActivePin((prev) =>
+          prev?.id === item.id ? { kind: nextType, id: item.id } : prev,
+        );
+        setHoveredPin((prev) =>
+          prev?.id === item.id ? { kind: nextType, id: item.id } : prev,
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "修改类型失败");
+        if (fileName) void loadPins(fileName);
+      }
+    },
+    [closeMarkerMenu, updatePins, fileName, loadPins],
   );
 
   const onPinPointerDown = useCallback(
@@ -1878,6 +1920,11 @@ export default function PdfViewer({
     if (!contextMenu || typeof window === "undefined") return false;
     return contextMenu.x + 140 + 120 > window.innerWidth - 8;
   }, [contextMenu]);
+
+  const pinTypeSubmenuOnLeft = useMemo(() => {
+    if (!markerMenu || typeof window === "undefined") return false;
+    return markerMenu.x + 140 + 120 > window.innerWidth - 8;
+  }, [markerMenu]);
 
   const pageQuestions = useMemo(
     () => pins.filter((q) => q.type === "question" && q.pageNumber === pageNumber),
@@ -2777,6 +2824,50 @@ export default function PdfViewer({
           className="fixed z-50 min-w-[7.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
           style={{ left: markerMenu.x, top: markerMenu.y }}
         >
+          {markerMenu.kind !== "arrow" ? (
+            <>
+              <div
+                className="relative"
+                onMouseEnter={() => setPinTypeSubmenuOpen(true)}
+                onMouseLeave={() => setPinTypeSubmenuOpen(false)}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  aria-expanded={pinTypeSubmenuOpen}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+                  onClick={() => setPinTypeSubmenuOpen((open) => !open)}
+                >
+                  <span>更改类型</span>
+                  <span className="text-[#a8a29e]" aria-hidden>
+                    ›
+                  </span>
+                </button>
+                {pinTypeSubmenuOpen ? (
+                  <div
+                    role="menu"
+                    className={`absolute top-0 z-50 min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md ${
+                      pinTypeSubmenuOnLeft ? "right-full mr-0.5" : "left-full ml-0.5"
+                    }`}
+                  >
+                    {PIN_KINDS.filter((k) => k !== markerMenu.kind).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        role="menuitem"
+                        className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+                        onClick={() => void changePinType(markerMenu.pin, k)}
+                      >
+                        {pinKindLabel(k)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <div className="my-1 border-t border-[#e7e2d9]" role="separator" />
+            </>
+          ) : null}
           <button
             type="button"
             role="menuitem"
