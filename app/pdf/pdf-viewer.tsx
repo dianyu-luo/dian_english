@@ -620,15 +620,23 @@ export default function PdfViewer({
     [],
   );
 
-  // 进入页面：恢复最近阅读的文件与页码
+  // 进入页面：恢复最近阅读；支持 ?fileName= 打开指定文件
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const res = await fetch("/api/pdf/recent");
+        const wanted = new URLSearchParams(window.location.search).get("fileName")?.trim();
+        const res = await fetch(
+          wanted
+            ? `/api/pdf/recent?fileName=${encodeURIComponent(wanted)}`
+            : "/api/pdf/recent",
+        );
         const data = await res.json();
         if (!res.ok || !data.ok || !data.item || cancelled) {
+          if (wanted && !cancelled) {
+            setError(`找不到文件「${wanted}」，请先重新打开该 PDF`);
+          }
           onRecentChangeRef.current?.(null);
           return;
         }

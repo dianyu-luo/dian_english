@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { formatDurationMs } from "@/lib/activity/format-duration";
+import { formatRelativeTime } from "@/lib/activity/format-relative-time";
+import { getRecentFiles } from "@/lib/activity/recent-files";
 import { getActivitySummary } from "@/lib/activity/summary";
 
 export const metadata = {
@@ -8,7 +10,10 @@ export const metadata = {
 };
 
 export default async function ActivityPage() {
-  const summary = await getActivitySummary();
+  const [summary, recentFiles] = await Promise.all([
+    getActivitySummary(),
+    getRecentFiles(20),
+  ]);
 
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
@@ -28,7 +33,7 @@ export default async function ActivityPage() {
         <section className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">浏览数据</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
-            查看页面使用时间、最近访问的文件，以及最近的编辑内容。下方两项列表仍在占位。
+            查看页面使用时间、最近访问的文件，以及最近的编辑内容。
           </p>
         </section>
 
@@ -49,7 +54,32 @@ export default async function ActivityPage() {
 
         <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
           <h2 className="text-lg font-medium">最近访问文件</h2>
-          <p className="text-sm leading-6 text-[#78716c]">暂无数据。接入后这里会列出最近打开的 PDF。</p>
+          {recentFiles.length === 0 ? (
+            <p className="text-sm leading-6 text-[#78716c]">暂无最近打开的 PDF。</p>
+          ) : (
+            <ul className="divide-y divide-[#e7e2d9] border-y border-[#e7e2d9]">
+              {recentFiles.map((item) => {
+                const href = `/pdf?fileName=${encodeURIComponent(item.fileName)}`;
+                const time = formatRelativeTime(item.updatedAt);
+                return (
+                  <li key={item.id}>
+                    <Link
+                      href={href}
+                      className="flex flex-col gap-0.5 py-3 hover:bg-[#f0ebe3]/70 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+                    >
+                      <span className="min-w-0 truncate text-sm font-medium text-[#1c1917]">
+                        {item.fileName}
+                      </span>
+                      <span className="shrink-0 text-xs text-[#a8a29e]">
+                        第 {item.pageNumber} 页
+                        {time ? ` · ${time}` : ""}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
 
         <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
