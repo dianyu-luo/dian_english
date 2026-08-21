@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { usePageDwell } from "@/lib/dwell/use-page-dwell";
-import type { PdfWordSelectInfo } from "./get-selected-word";
+import { resolveHighlightRects, type PdfWordSelectInfo } from "./get-selected-word";
 import type { PdfJumpRequest } from "./pdf-viewer";
 import PdfChat from "./pdf-chat";
 
@@ -30,6 +30,7 @@ type SavedMark = {
   rectHeight: number;
   contextBefore: string;
   contextAfter: string;
+  locator?: string;
   createdAt: string | number | Date;
   updatedAt: string | number | Date;
 };
@@ -292,17 +293,19 @@ export default function PdfPageClient({
   }, []);
 
   const handleMarkClick = useCallback((m: SavedMark) => {
+    const rect = {
+      left: m.rectLeft,
+      top: m.rectTop,
+      width: m.rectWidth,
+      height: m.rectHeight,
+    };
     setJumpRequest({
       nonce: Date.now(),
       fileName: m.fileName,
       pageNumber: m.pageNumber,
       word: m.word,
-      rect: {
-        left: m.rectLeft,
-        top: m.rectTop,
-        width: m.rectWidth,
-        height: m.rectHeight,
-      },
+      rect,
+      rects: resolveHighlightRects({ locator: m.locator, rect }),
     });
     setMobileSideOpen(false);
   }, []);

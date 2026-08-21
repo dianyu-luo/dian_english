@@ -8,6 +8,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 import {
   getSelectedWordInfo,
   isEnglishWord,
+  resolveHighlightRects,
   type OnPdfWordSelect,
   type PdfWordSelectInfo,
 } from "./get-selected-word";
@@ -42,6 +43,8 @@ export type PdfJumpRequest = {
   pageNumber: number;
   word: string;
   rect: PdfHighlightRect;
+  /** 按行高亮；缺省时退回单个 rect */
+  rects?: PdfHighlightRect[];
 };
 
 type PdfViewerProps = {
@@ -463,9 +466,11 @@ export default function PdfViewer({
   const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [highlight, setHighlight] = useState<
-    (PdfHighlightRect & { word: string; pageNumber: number }) | null
-  >(null);
+  const [highlight, setHighlight] = useState<{
+    word: string;
+    pageNumber: number;
+    rects: PdfHighlightRect[];
+  } | null>(null);
   const [pageInput, setPageInput] = useState("1");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
@@ -587,11 +592,13 @@ export default function PdfViewer({
   }, []);
 
   const showHighlight = useCallback(
-    (rect: PdfHighlightRect, word: string, page: number) => {
+    (rects: PdfHighlightRect[], word: string, page: number) => {
+      const next = rects.filter((r) => r.width > 0 && r.height > 0);
+      if (next.length === 0) return;
       if (highlightTimerRef.current != null) {
         window.clearTimeout(highlightTimerRef.current);
       }
-      setHighlight({ ...rect, word, pageNumber: page });
+      setHighlight({ rects: next, word, pageNumber: page });
       highlightTimerRef.current = window.setTimeout(() => {
         setHighlight(null);
         highlightTimerRef.current = null;
@@ -684,7 +691,11 @@ export default function PdfViewer({
           setError(null);
         }
 
-        showHighlight(jumpRequest.rect, jumpRequest.word, jumpRequest.pageNumber);
+        const rects =
+          jumpRequest.rects && jumpRequest.rects.length > 0
+            ? jumpRequest.rects
+            : [jumpRequest.rect];
+        showHighlight(rects, jumpRequest.word, jumpRequest.pageNumber);
       } catch {
         if (!cancelled) setError("跳转失败");
       }
@@ -2233,39 +2244,60 @@ export default function PdfViewer({
                     }}
                   />
                 ) : null}
-                {highlight && highlight.pageNumber === pageNumber ? (
-                  <div
-                    ref={highlightRef}
-                    aria-label={`高亮 ${highlight.word}`}
-                    className="pointer-events-none absolute z-10 bg-[#fbbf24]/55 ring-2 ring-[#d97706] transition-opacity"
-                    style={{
-                      left: `${highlight.left * 100}%`,
-                      top: `${highlight.top * 100}%`,
-                      width: `${Math.max(highlight.width, 0.01) * 100}%`,
-                      height: `${Math.max(highlight.height, 0.008) * 100}%`,
-                    }}
-                  />
-                ) : null}
-                {pageWordMarks.map((m) => {
+                {highlight && highlight.pageNumber === pageNumber
+                  ? highlight.rects.map((r, i) => (
+                      <div
+                        key={`hl-${i}`}
+                        ref={i === 0 ? highlightRef : undefined}
+                        aria-label={i === 0 ? `高亮 ${highlight.word}` : undefined}
+                        aria-hidden={i === 0 ? undefined : true}
+                        className="pointer-events-none absolute z-10 bg-[#fbbf24]/55 ring-1 ring-[#d97706] transition-opacity"
+                        style={{
+                          left: `${r.left * 100}%`,
+                          top: `${r.top * 100}%`,
+                          width: `${Math.max(r.width, 0.01) * 100}%`,
+                          height: `${Math.max(r.height, 0.008) * 100}%`,
+                        }}
+                      />
+                    ))
+                  : null}
+                {pageWordMarks.flatMap((m) => {
                   const isActive = activeWordMarkId === m.id;
-                  return (
+                  const strips = resolveHighlightRects({
+                    locator: m.locator,
+                    rect: {
+                      left: m.rectLeft,
+                      top: m.rectTop,
+                      width: m.rectWidth,
+                      height: m.rectHeight,
+                    },
+                  });
+                  return strips.map((r, i) => (
                     <button
-                      key={`wm-${m.id}`}
+                      key={`wm-${m.id}-${i}`}
                       type="button"
                       data-word-mark
                       data-word-mark-id={m.id}
-                      aria-label={m.note ? `选区笔记：${m.note}` : `选区笔记：${m.word}`}
-                      title={m.note || m.word}
+                      aria-label={
+                        i === 0
+                          ? m.note
+                            ? `选区笔记：${m.note}`
+                            : `选区笔记：${m.word}`
+                          : undefined
+                      }
+                      aria-hidden={i === 0 ? undefined : true}
+                      title={i === 0 ? m.note || m.word : undefined}
+                      tabIndex={i === 0 ? 0 : -1}
                       className={`absolute z-[15] cursor-pointer border-0 p-0 ${
                         isActive
                           ? "bg-[#fbbf24]/70 ring-2 ring-[#d97706]"
                           : "bg-[#fbbf24]/55 ring-1 ring-[#d97706]/80 hover:bg-[#fbbf24]/70"
                       }`}
                       style={{
-                        left: `${m.rectLeft * 100}%`,
-                        top: `${m.rectTop * 100}%`,
-                        width: `${Math.max(m.rectWidth, 0.01) * 100}%`,
-                        height: `${Math.max(m.rectHeight, 0.008) * 100}%`,
+                        left: `${r.left * 100}%`,
+                        top: `${r.top * 100}%`,
+                        width: `${Math.max(r.width, 0.01) * 100}%`,
+                        height: `${Math.max(r.height, 0.008) * 100}%`,
                       }}
                       onClick={(e) => {
                         e.preventDefault();
@@ -2273,7 +2305,7 @@ export default function PdfViewer({
                         openWordMarkEditor(m);
                       }}
                     />
-                  );
+                  ));
                 })}
                 {pageQuestions.map((q) => {
                   const isDragging =
