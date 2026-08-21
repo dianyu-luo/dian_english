@@ -12,6 +12,7 @@ import {
   type OnPdfWordSelect,
   type PdfWordSelectInfo,
 } from "./get-selected-word";
+import { parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "./markdown";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -550,6 +551,11 @@ export default function PdfViewer({
   const numPagesRef = useRef(numPages);
   const fileNameRef = useRef(fileName);
   const restorePageRef = useRef<number | null>(null);
+  const pendingJumpRef = useRef<{
+    word: string;
+    pageNumber: number;
+    rects: PdfHighlightRect[];
+  } | null>(null);
   const skipPersistRef = useRef(true);
   const highlightTimerRef = useRef<number | null>(null);
 
@@ -620,13 +626,14 @@ export default function PdfViewer({
     [],
   );
 
-  // 进入页面：恢复最近阅读；支持 ?fileName= 打开指定文件
+  // 进入页面：恢复最近阅读；支持 ?fileName= 打开指定文件；?page&word&hl= 跳转并高亮单词
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const wanted = new URLSearchParams(window.location.search).get("fileName")?.trim();
+        const jump = parsePdfJumpSearch(window.location.search);
+        const wanted = jump.fileName;
         const res = await fetch(
           wanted
             ? `/api/pdf/recent?fileName=${encodeURIComponent(wanted)}`
@@ -642,11 +649,19 @@ export default function PdfViewer({
         }
 
         const item = data.item as RecentItem;
-        restorePageRef.current = item.pageNumber;
+        const targetPage = jump.pageNumber ?? item.pageNumber;
+        restorePageRef.current = targetPage;
+        if (jump.word && jump.rects.length > 0) {
+          pendingJumpRef.current = {
+            word: jump.word,
+            pageNumber: targetPage,
+            rects: jump.rects,
+          };
+        }
         skipPersistRef.current = true;
         setFile(item.url);
         setFileName(item.fileName);
-        setPageNumber(item.pageNumber);
+        setPageNumber(targetPage);
         setScale(clampScale(item.scale ?? 1));
         onRecentChangeRef.current?.(item);
       } catch {
@@ -899,8 +914,12 @@ export default function PdfViewer({
     const restore = restorePageRef.current;
     restorePageRef.current = null;
     if (restore != null) {
+      const next = Math.min(Math.max(1, restore), total);
       skipPersistRef.current = true;
-      setPageNumber(Math.min(Math.max(1, restore), total));
+      setPageNumber(next);
+      if (pendingJumpRef.current) {
+        pendingJumpRef.current = { ...pendingJumpRef.current, pageNumber: next };
+      }
     }
     setError(null);
   }, []);
@@ -979,10 +998,16 @@ export default function PdfViewer({
   }, [highlight, pageNumber, pageWidth, centerHighlight]);
 
   const onPageRenderSuccess = useCallback(() => {
+    const pending = pendingJumpRef.current;
+    if (pending && pending.pageNumber === pageNumberRef.current) {
+      pendingJumpRef.current = null;
+      showHighlight(pending.rects, pending.word, pending.pageNumber);
+      return;
+    }
     if (highlightRef.current) {
       centerHighlight();
     }
-  }, [centerHighlight]);
+  }, [centerHighlight, showHighlight]);
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);

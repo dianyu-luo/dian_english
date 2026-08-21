@@ -129,6 +129,28 @@ describe("mergeRecentEdits", () => {
     expect(item.kindLabel).toBe("笔记");
   });
 
+  it("单词链接带上页码、词和高亮位置", () => {
+    const item = fromWordMark({
+      id: 7,
+      fileName: "d.pdf",
+      word: "kernel",
+      type: "word",
+      note: "核函数",
+      pageNumber: 4,
+      rectLeft: 0.1,
+      rectTop: 0.2,
+      rectWidth: 0.08,
+      rectHeight: 0.02,
+      updatedAt: "2026-08-21T08:00:00Z",
+    });
+    const href = new URL(item.href, "https://ne.local");
+    expect(href.pathname).toBe("/pdf");
+    expect(href.searchParams.get("fileName")).toBe("d.pdf");
+    expect(href.searchParams.get("page")).toBe("4");
+    expect(href.searchParams.get("word")).toBe("kernel");
+    expect(href.searchParams.get("hl")).toBe("0.1,0.2,0.08,0.02");
+  });
+
   it("标记无正文时用类型名，批注用图形名", () => {
     expect(
       fromPin({

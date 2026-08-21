@@ -1,3 +1,6 @@
+import { resolveHighlightRects } from "../../app/pdf/get-selected-word";
+import { buildPdfHref } from "../pdf/jump-search";
+
 export type RecentEditKind = "note" | "mark" | "annotation";
 
 export type RecentEditItem = {
@@ -19,6 +22,11 @@ export type WordMarkEditRow = {
   type: string;
   note: string;
   pageNumber: number;
+  rectLeft?: number;
+  rectTop?: number;
+  rectWidth?: number;
+  rectHeight?: number;
+  locator?: string | null;
   updatedAt: Date | number | string;
 };
 
@@ -84,23 +92,37 @@ function toDate(value: Date | number | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
-function pdfHref(fileName: string): string {
-  return `/pdf?fileName=${encodeURIComponent(fileName)}`;
-}
-
 export function fromWordMark(row: WordMarkEditRow): RecentEditItem {
   const typeLabel = wordMarkTypeLabel(row.type);
   const note = previewText(row.note);
+  const word = row.word.trim();
+  const rect =
+    [row.rectLeft, row.rectTop, row.rectWidth, row.rectHeight].every(
+      (n) => typeof n === "number" && Number.isFinite(n),
+    )
+      ? {
+          left: row.rectLeft!,
+          top: row.rectTop!,
+          width: row.rectWidth!,
+          height: row.rectHeight!,
+        }
+      : null;
+  const rects = resolveHighlightRects({ locator: row.locator, rect });
   return {
     key: `note-${row.id}`,
     kind: "note",
     kindLabel: KIND_LABEL.note,
     typeLabel,
-    title: note || row.word.trim() || typeLabel,
+    title: note || word || typeLabel,
     fileName: row.fileName,
     pageNumber: row.pageNumber,
     updatedAt: toDate(row.updatedAt),
-    href: pdfHref(row.fileName),
+    href: buildPdfHref({
+      fileName: row.fileName,
+      pageNumber: row.pageNumber,
+      word: word || undefined,
+      rects,
+    }),
   };
 }
 
@@ -116,7 +138,7 @@ export function fromPin(row: PinEditRow): RecentEditItem | null {
     fileName: row.fileName,
     pageNumber: row.pageNumber,
     updatedAt: toDate(row.updatedAt),
-    href: pdfHref(row.fileName),
+    href: buildPdfHref({ fileName: row.fileName }),
   };
 }
 
@@ -131,7 +153,7 @@ export function fromAnnotation(row: AnnotationEditRow): RecentEditItem {
     fileName: row.fileName,
     pageNumber: row.pageNumber,
     updatedAt: toDate(row.updatedAt),
-    href: pdfHref(row.fileName),
+    href: buildPdfHref({ fileName: row.fileName }),
   };
 }
 
