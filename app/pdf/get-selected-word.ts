@@ -1,4 +1,13 @@
-/** 从当前 Selection 中取出单词；无有效选区时返回 null */
+/** 英文单词：至少含一个字母，可含数字、撇号、连字符 */
+const ENGLISH_WORD_RE = /[A-Za-z][A-Za-z0-9]*(?:['’-][A-Za-z0-9]+)*/;
+const ENGLISH_WORD_FULL_RE = /^[A-Za-z][A-Za-z0-9]*(?:['’-][A-Za-z0-9]+)*$/;
+
+/** 判断文本是否为可入库的英文单词（中文等非英文不算） */
+export function isEnglishWord(text: string): boolean {
+  return ENGLISH_WORD_FULL_RE.test(text.trim());
+}
+
+/** 从当前 Selection 中取出英文单词；无有效英文词时返回 null */
 export function getSelectedWord(selection: Selection | null = null): string | null {
   const sel = selection ?? (typeof window !== "undefined" ? window.getSelection() : null);
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
@@ -6,12 +15,8 @@ export function getSelectedWord(selection: Selection | null = null): string | nu
   const raw = sel.toString().replace(/\s+/g, " ").trim();
   if (!raw) return null;
 
-  // 多词时取第一个词；中日韩连续字符整段保留
-  const cjk = raw.match(/^[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]+/);
-  if (cjk) return cjk[0];
-
-  const word = raw.match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/);
-  return word?.[0] ?? raw.split(/\s+/)[0] ?? null;
+  const word = raw.match(ENGLISH_WORD_RE);
+  return word?.[0] ?? null;
 }
 
 /** 相对页面的归一化矩形（0–1），缩放后仍可对齐 */

@@ -7,6 +7,7 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import {
   getSelectedWordInfo,
+  isEnglishWord,
   type OnPdfWordSelect,
   type PdfWordSelectInfo,
 } from "./get-selected-word";
@@ -687,8 +688,8 @@ export default function PdfViewer({
 
     onWordSelectRef.current?.(info);
 
-    // 单词选中后自动入库（不覆盖已有 note）
-    if (info.type === "word" && info.fileName) {
+    // 英文单词选中后自动入库（中文不算单词；不覆盖已有 note）
+    if (info.type === "word" && info.fileName && isEnglishWord(info.word)) {
       void (async () => {
         try {
           const res = await fetch("/api/pdf/words", {
