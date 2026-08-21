@@ -30,6 +30,21 @@ describe("buildPdfHref / parsePdfJumpSearch", () => {
     });
   });
 
+  it("无单词时仍可带高亮矩形", () => {
+    const href = buildPdfHref({
+      fileName: "c.pdf",
+      pageNumber: 9,
+      rects: [{ left: 0.4, top: 0.2, width: 0.05, height: 0.04 }],
+    });
+    const jump = parsePdfJumpSearch(href.slice("/pdf".length));
+    expect(jump).toEqual({
+      fileName: "c.pdf",
+      pageNumber: 9,
+      word: null,
+      rects: [{ left: 0.4, top: 0.2, width: 0.05, height: 0.04 }],
+    });
+  });
+
   it("忽略无效矩形", () => {
     const jump = parsePdfJumpSearch("fileName=a.pdf&page=2&word=x&hl=1,2,0,3|0.1,0.2,0.3,0.04");
     expect(jump.rects).toEqual([{ left: 0.1, top: 0.2, width: 0.3, height: 0.04 }]);

@@ -36,6 +36,10 @@ export type PinEditRow = {
   type: string;
   content: string;
   pageNumber: number;
+  rectLeft?: number;
+  rectTop?: number;
+  rectWidth?: number;
+  rectHeight?: number;
   deletedAt?: Date | number | string | null;
   updatedAt: Date | number | string;
 };
@@ -92,22 +96,32 @@ function toDate(value: Date | number | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+function rowRect(row: {
+  rectLeft?: number;
+  rectTop?: number;
+  rectWidth?: number;
+  rectHeight?: number;
+}) {
+  if (
+    ![row.rectLeft, row.rectTop, row.rectWidth, row.rectHeight].every(
+      (n) => typeof n === "number" && Number.isFinite(n),
+    )
+  ) {
+    return null;
+  }
+  return {
+    left: row.rectLeft!,
+    top: row.rectTop!,
+    width: row.rectWidth!,
+    height: row.rectHeight!,
+  };
+}
+
 export function fromWordMark(row: WordMarkEditRow): RecentEditItem {
   const typeLabel = wordMarkTypeLabel(row.type);
   const note = previewText(row.note);
   const word = row.word.trim();
-  const rect =
-    [row.rectLeft, row.rectTop, row.rectWidth, row.rectHeight].every(
-      (n) => typeof n === "number" && Number.isFinite(n),
-    )
-      ? {
-          left: row.rectLeft!,
-          top: row.rectTop!,
-          width: row.rectWidth!,
-          height: row.rectHeight!,
-        }
-      : null;
-  const rects = resolveHighlightRects({ locator: row.locator, rect });
+  const rects = resolveHighlightRects({ locator: row.locator, rect: rowRect(row) });
   return {
     key: `note-${row.id}`,
     kind: "note",
@@ -129,6 +143,7 @@ export function fromWordMark(row: WordMarkEditRow): RecentEditItem {
 export function fromPin(row: PinEditRow): RecentEditItem | null {
   if (row.deletedAt != null) return null;
   const typeLabel = pinTypeLabel(row.type);
+  const rect = rowRect(row);
   return {
     key: `mark-${row.id}`,
     kind: "mark",
@@ -138,7 +153,11 @@ export function fromPin(row: PinEditRow): RecentEditItem | null {
     fileName: row.fileName,
     pageNumber: row.pageNumber,
     updatedAt: toDate(row.updatedAt),
-    href: buildPdfHref({ fileName: row.fileName, pageNumber: row.pageNumber }),
+    href: buildPdfHref({
+      fileName: row.fileName,
+      pageNumber: row.pageNumber,
+      rects: rect ? [rect] : undefined,
+    }),
   };
 }
 

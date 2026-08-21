@@ -151,13 +151,17 @@ describe("mergeRecentEdits", () => {
     expect(href.searchParams.get("hl")).toBe("0.1,0.2,0.08,0.02");
   });
 
-  it("标记链接带上页码", () => {
+  it("标记链接带上页码和高亮位置", () => {
     const item = fromPin({
       id: 5,
       fileName: "e.pdf",
       type: "bookmark",
       content: "",
       pageNumber: 7,
+      rectLeft: 0.42,
+      rectTop: 0.31,
+      rectWidth: 0.04,
+      rectHeight: 0.03,
       updatedAt: 1,
     });
     expect(item?.title).toBe("书签");
@@ -165,6 +169,7 @@ describe("mergeRecentEdits", () => {
     expect(href.pathname).toBe("/pdf");
     expect(href.searchParams.get("fileName")).toBe("e.pdf");
     expect(href.searchParams.get("page")).toBe("7");
+    expect(href.searchParams.get("hl")).toBe("0.42,0.31,0.04,0.03");
   });
 
   it("标记无正文时用类型名，批注用图形名", () => {

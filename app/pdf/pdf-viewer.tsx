@@ -651,9 +651,9 @@ export default function PdfViewer({
         const item = data.item as RecentItem;
         const targetPage = jump.pageNumber ?? item.pageNumber;
         restorePageRef.current = targetPage;
-        if (jump.word && jump.rects.length > 0) {
+        if (jump.rects.length > 0) {
           pendingJumpRef.current = {
-            word: jump.word,
+            word: jump.word ?? "",
             pageNumber: targetPage,
             rects: jump.rects,
           };
