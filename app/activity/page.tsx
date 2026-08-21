@@ -57,28 +57,38 @@ export default async function ActivityPage() {
           {recentFiles.length === 0 ? (
             <p className="text-sm leading-6 text-[#78716c]">暂无最近打开的 PDF。</p>
           ) : (
-            <ul className="divide-y divide-[#e7e2d9] border-y border-[#e7e2d9]">
-              {recentFiles.map((item) => {
-                const href = `/pdf?fileName=${encodeURIComponent(item.fileName)}`;
-                const time = formatRelativeTime(item.updatedAt);
-                return (
-                  <li key={item.id}>
-                    <Link
-                      href={href}
-                      className="flex flex-col gap-0.5 py-3 hover:bg-[#f0ebe3]/70 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
-                    >
-                      <span className="min-w-0 truncate text-sm font-medium text-[#1c1917]">
-                        {item.fileName}
-                      </span>
-                      <span className="shrink-0 text-xs text-[#a8a29e]">
-                        第 {item.pageNumber} 页
-                        {time ? ` · ${time}` : ""}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="border-y border-[#e7e2d9]">
+              <div className="hidden grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] gap-4 border-b border-[#e7e2d9] py-2 text-xs text-[#78716c] sm:grid">
+                <span>文件</span>
+                <span className="text-right">浏览时长</span>
+                <span className="text-right">最近进度</span>
+              </div>
+              <ul className="divide-y divide-[#e7e2d9]">
+                {recentFiles.map((item) => {
+                  const href = `/pdf?fileName=${encodeURIComponent(item.fileName)}`;
+                  const time = formatRelativeTime(item.updatedAt);
+                  return (
+                    <li key={item.id}>
+                      <Link
+                        href={href}
+                        className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] sm:items-center sm:gap-4"
+                      >
+                        <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]">
+                          {item.fileName}
+                        </span>
+                        <span className="whitespace-nowrap text-xs tabular-nums text-[#57534e] sm:text-right">
+                          {formatDurationMs(item.dwellMs)}
+                        </span>
+                        <span className="whitespace-nowrap text-xs text-[#a8a29e] sm:text-right">
+                          第 {item.pageNumber} 页
+                          {time ? ` · ${time}` : ""}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </section>
 

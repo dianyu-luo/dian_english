@@ -1,8 +1,8 @@
 import "server-only";
 
-import { desc } from "drizzle-orm";
+import { desc, inArray, sum } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { pdfRecentReads } from "@/lib/db/schema";
+import { pageDwellSessions, pdfRecentReads } from "@/lib/db/schema";
 
 export type RecentFileItem = {
   id: number;
@@ -12,7 +12,15 @@ export type RecentFileItem = {
   storageKey: string;
   fileSize: number;
   updatedAt: Date;
+  /** 该文档累计浏览时长（毫秒） */
+  dwellMs: number;
 };
+
+function toMs(value: string | number | null | undefined): number {
+  if (value == null) return 0;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+}
 
 export async function getRecentFiles(limit = 20): Promise<RecentFileItem[]> {
   const rows = await db
@@ -20,6 +28,23 @@ export async function getRecentFiles(limit = 20): Promise<RecentFileItem[]> {
     .from(pdfRecentReads)
     .orderBy(desc(pdfRecentReads.updatedAt))
     .limit(Math.min(Math.max(1, limit), 50));
+
+  if (rows.length === 0) return [];
+
+  const names = rows.map((row) => row.fileName);
+  const dwellRows = await db
+    .select({
+      resourceKey: pageDwellSessions.resourceKey,
+      total: sum(pageDwellSessions.durationMs),
+    })
+    .from(pageDwellSessions)
+    .where(inArray(pageDwellSessions.resourceKey, names))
+    .groupBy(pageDwellSessions.resourceKey);
+
+  const dwellByName = new Map<string, number>();
+  for (const row of dwellRows) {
+    if (row.resourceKey) dwellByName.set(row.resourceKey, toMs(row.total));
+  }
 
   return rows.map((row) => ({
     id: row.id,
@@ -29,5 +54,6 @@ export async function getRecentFiles(limit = 20): Promise<RecentFileItem[]> {
     storageKey: row.storageKey,
     fileSize: row.fileSize,
     updatedAt: row.updatedAt,
+    dwellMs: dwellByName.get(row.fileName) ?? 0,
   }));
 }
