@@ -75,7 +75,7 @@ describe("mergeRecentEdits", () => {
       kindLabel: "标记",
       typeLabel: "待办",
       title: "回头再看",
-      href: "/pdf?fileName=b.pdf",
+      href: "/pdf?fileName=b.pdf&page=5",
     });
   });
 
@@ -149,6 +149,22 @@ describe("mergeRecentEdits", () => {
     expect(href.searchParams.get("page")).toBe("4");
     expect(href.searchParams.get("word")).toBe("kernel");
     expect(href.searchParams.get("hl")).toBe("0.1,0.2,0.08,0.02");
+  });
+
+  it("标记链接带上页码", () => {
+    const item = fromPin({
+      id: 5,
+      fileName: "e.pdf",
+      type: "bookmark",
+      content: "",
+      pageNumber: 7,
+      updatedAt: 1,
+    });
+    expect(item?.title).toBe("书签");
+    const href = new URL(item!.href, "https://ne.local");
+    expect(href.pathname).toBe("/pdf");
+    expect(href.searchParams.get("fileName")).toBe("e.pdf");
+    expect(href.searchParams.get("page")).toBe("7");
   });
 
   it("标记无正文时用类型名，批注用图形名", () => {

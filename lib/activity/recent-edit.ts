@@ -138,7 +138,7 @@ export function fromPin(row: PinEditRow): RecentEditItem | null {
     fileName: row.fileName,
     pageNumber: row.pageNumber,
     updatedAt: toDate(row.updatedAt),
-    href: buildPdfHref({ fileName: row.fileName }),
+    href: buildPdfHref({ fileName: row.fileName, pageNumber: row.pageNumber }),
   };
 }
 
