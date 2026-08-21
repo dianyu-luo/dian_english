@@ -120,21 +120,21 @@ function rowRect(row: {
 export function fromWordMark(row: WordMarkEditRow): RecentEditItem {
   const typeLabel = wordMarkTypeLabel(row.type);
   const note = previewText(row.note);
-  const word = row.word.trim();
+  const word = previewText(row.word);
   const rects = resolveHighlightRects({ locator: row.locator, rect: rowRect(row) });
   return {
     key: `note-${row.id}`,
     kind: "note",
     kindLabel: KIND_LABEL.note,
     typeLabel,
-    title: note || word || typeLabel,
+    title: row.type === "sentence" ? word || note || typeLabel : note || word || typeLabel,
     fileName: row.fileName,
     pageNumber: row.pageNumber,
     updatedAt: toDate(row.updatedAt),
     href: buildPdfHref({
       fileName: row.fileName,
       pageNumber: row.pageNumber,
-      word: word || undefined,
+      word: row.word.trim() || undefined,
       rects,
     }),
   };
