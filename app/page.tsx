@@ -18,12 +18,6 @@ export default function Home() {
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
-              href="/test"
-              className="inline-block border border-[#d6d3d1] bg-[#faf8f4] px-4 py-2 text-sm font-medium hover:bg-[#f0ebe3]"
-            >
-              测试
-            </Link>
-            <Link
               href="/pdf"
               className="inline-block border border-[#d6d3d1] bg-[#faf8f4] px-4 py-2 text-sm font-medium hover:bg-[#f0ebe3]"
             >

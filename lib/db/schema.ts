@@ -1,21 +1,5 @@
 import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const testFiles = sqliteTable("test_files", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
-
-export const helloTest = sqliteTable("hello_test", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  uuid: text("uuid").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
-
 /** 最近阅读：上次打开的 PDF、页码与缩放比例 */
 export const pdfRecentReads = sqliteTable("pdf_recent_reads", {
   id: integer("id").primaryKey({ autoIncrement: true }),
