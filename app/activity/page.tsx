@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatDurationMs } from "@/lib/activity/format-duration";
 import { formatRelativeTime } from "@/lib/activity/format-relative-time";
+import { getRecentEdits } from "@/lib/activity/recent-edits";
 import { getRecentFiles } from "@/lib/activity/recent-files";
 import { getActivitySummary } from "@/lib/activity/summary";
 
@@ -10,9 +11,10 @@ export const metadata = {
 };
 
 export default async function ActivityPage() {
-  const [summary, recentFiles] = await Promise.all([
+  const [summary, recentFiles, recentEdits] = await Promise.all([
     getActivitySummary(),
     getRecentFiles(20),
+    getRecentEdits(20),
   ]);
 
   return (
@@ -94,9 +96,48 @@ export default async function ActivityPage() {
 
         <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
           <h2 className="text-lg font-medium">最近编辑内容</h2>
-          <p className="text-sm leading-6 text-[#78716c]">
-            暂无数据。接入后这里会显示笔记、标记和批注的变更。
-          </p>
+          {recentEdits.length === 0 ? (
+            <p className="text-sm leading-6 text-[#78716c]">
+              暂无数据。接入后这里会显示笔记、标记和批注的变更。
+            </p>
+          ) : (
+            <div className="border-y border-[#e7e2d9]">
+              <div className="hidden grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] gap-4 border-b border-[#e7e2d9] py-2 text-xs text-[#78716c] sm:grid">
+                <span>内容</span>
+                <span className="text-right">类型</span>
+                <span className="text-right">最近更新</span>
+              </div>
+              <ul className="divide-y divide-[#e7e2d9]">
+                {recentEdits.map((item) => {
+                  const time = formatRelativeTime(item.updatedAt);
+                  return (
+                    <li key={item.key}>
+                      <Link
+                        href={item.href}
+                        className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] sm:items-center sm:gap-4"
+                      >
+                        <span className="min-w-0">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]">
+                            {item.title}
+                          </span>
+                          <span className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#a8a29e]">
+                            {item.fileName}
+                          </span>
+                        </span>
+                        <span className="whitespace-nowrap text-xs text-[#57534e] sm:text-right">
+                          {item.kindLabel} · {item.typeLabel}
+                        </span>
+                        <span className="whitespace-nowrap text-xs text-[#a8a29e] sm:text-right">
+                          第 {item.pageNumber} 页
+                          {time ? ` · ${time}` : ""}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </section>
       </main>
     </div>

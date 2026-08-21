@@ -1,0 +1,156 @@
+export type RecentEditKind = "note" | "mark" | "annotation";
+
+export type RecentEditItem = {
+  key: string;
+  kind: RecentEditKind;
+  kindLabel: string;
+  typeLabel: string;
+  title: string;
+  fileName: string;
+  pageNumber: number;
+  updatedAt: Date;
+  href: string;
+};
+
+export type WordMarkEditRow = {
+  id: number;
+  fileName: string;
+  word: string;
+  type: string;
+  note: string;
+  pageNumber: number;
+  updatedAt: Date | number | string;
+};
+
+export type PinEditRow = {
+  id: number;
+  fileName: string;
+  type: string;
+  content: string;
+  pageNumber: number;
+  deletedAt?: Date | number | string | null;
+  updatedAt: Date | number | string;
+};
+
+export type AnnotationEditRow = {
+  id: number;
+  fileName: string;
+  type: string;
+  pageNumber: number;
+  updatedAt: Date | number | string;
+};
+
+const KIND_LABEL: Record<RecentEditKind, string> = {
+  note: "笔记",
+  mark: "标记",
+  annotation: "批注",
+};
+
+export function previewText(text: string, max = 40): string {
+  const t = text.replace(/^#+\s+/gm, "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  return t.length > max ? `${t.slice(0, max)}…` : t;
+}
+
+export function wordMarkTypeLabel(type: string): string {
+  return type === "sentence" ? "句子" : "单词";
+}
+
+export function pinTypeLabel(type: string): string {
+  switch (type) {
+    case "question":
+      return "问题";
+    case "bookmark":
+      return "书签";
+    case "todo":
+      return "待办";
+    default:
+      return "笔记";
+  }
+}
+
+export function annotationTypeLabel(type: string): string {
+  switch (type) {
+    case "circle":
+      return "圆形";
+    case "rect":
+      return "矩形";
+    default:
+      return "箭头";
+  }
+}
+
+function toDate(value: Date | number | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function pdfHref(fileName: string): string {
+  return `/pdf?fileName=${encodeURIComponent(fileName)}`;
+}
+
+export function fromWordMark(row: WordMarkEditRow): RecentEditItem {
+  const typeLabel = wordMarkTypeLabel(row.type);
+  const note = previewText(row.note);
+  return {
+    key: `note-${row.id}`,
+    kind: "note",
+    kindLabel: KIND_LABEL.note,
+    typeLabel,
+    title: note || row.word.trim() || typeLabel,
+    fileName: row.fileName,
+    pageNumber: row.pageNumber,
+    updatedAt: toDate(row.updatedAt),
+    href: pdfHref(row.fileName),
+  };
+}
+
+export function fromPin(row: PinEditRow): RecentEditItem | null {
+  if (row.deletedAt != null) return null;
+  const typeLabel = pinTypeLabel(row.type);
+  return {
+    key: `mark-${row.id}`,
+    kind: "mark",
+    kindLabel: KIND_LABEL.mark,
+    typeLabel,
+    title: previewText(row.content) || typeLabel,
+    fileName: row.fileName,
+    pageNumber: row.pageNumber,
+    updatedAt: toDate(row.updatedAt),
+    href: pdfHref(row.fileName),
+  };
+}
+
+export function fromAnnotation(row: AnnotationEditRow): RecentEditItem {
+  const typeLabel = annotationTypeLabel(row.type);
+  return {
+    key: `annotation-${row.id}`,
+    kind: "annotation",
+    kindLabel: KIND_LABEL.annotation,
+    typeLabel,
+    title: typeLabel,
+    fileName: row.fileName,
+    pageNumber: row.pageNumber,
+    updatedAt: toDate(row.updatedAt),
+    href: pdfHref(row.fileName),
+  };
+}
+
+export function mergeRecentEdits(
+  notes: WordMarkEditRow[],
+  marks: PinEditRow[],
+  annotations: AnnotationEditRow[],
+  limit: number,
+): RecentEditItem[] {
+  const cap = Math.min(Math.max(1, limit), 50);
+  const items: RecentEditItem[] = [
+    ...notes.map(fromWordMark),
+    ...marks.flatMap((row) => {
+      const item = fromPin(row);
+      return item ? [item] : [];
+    }),
+    ...annotations.map(fromAnnotation),
+  ];
+
+  items.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return items.slice(0, cap);
+}
