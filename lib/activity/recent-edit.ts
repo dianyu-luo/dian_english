@@ -7,6 +7,7 @@ export type RecentEditItem = {
   key: string;
   kind: RecentEditKind;
   kindLabel: string;
+  type: string;
   typeLabel: string;
   title: string;
   fileName: string;
@@ -14,6 +15,14 @@ export type RecentEditItem = {
   updatedAt: Date;
   href: string;
 };
+
+export type RecentEditColor =
+  | "word"
+  | "question"
+  | "note"
+  | "bookmark"
+  | "todo"
+  | "annotation";
 
 export type WordMarkEditRow = {
   id: number;
@@ -92,6 +101,17 @@ export function annotationTypeLabel(type: string): string {
   }
 }
 
+export function recentEditColor(
+  item: Pick<RecentEditItem, "kind" | "type">,
+): RecentEditColor {
+  if (item.kind === "note") return "word";
+  if (item.kind === "annotation") return "annotation";
+  if (item.type === "question" || item.type === "bookmark" || item.type === "todo") {
+    return item.type;
+  }
+  return "note";
+}
+
 function toDate(value: Date | number | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
@@ -126,6 +146,7 @@ export function fromWordMark(row: WordMarkEditRow): RecentEditItem {
     key: `note-${row.id}`,
     kind: "note",
     kindLabel: KIND_LABEL.note,
+    type: row.type,
     typeLabel,
     title: row.type === "sentence" ? word || note || typeLabel : note || word || typeLabel,
     fileName: row.fileName,
@@ -148,6 +169,7 @@ export function fromPin(row: PinEditRow): RecentEditItem | null {
     key: `mark-${row.id}`,
     kind: "mark",
     kindLabel: KIND_LABEL.mark,
+    type: row.type,
     typeLabel,
     title: previewText(row.content) || typeLabel,
     fileName: row.fileName,
@@ -167,6 +189,7 @@ export function fromAnnotation(row: AnnotationEditRow): RecentEditItem {
     key: `annotation-${row.id}`,
     kind: "annotation",
     kindLabel: KIND_LABEL.annotation,
+    type: row.type,
     typeLabel,
     title: typeLabel,
     fileName: row.fileName,

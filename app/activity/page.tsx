@@ -1,9 +1,22 @@
 import Link from "next/link";
 import { formatDurationMs } from "@/lib/activity/format-duration";
 import { formatRelativeTime } from "@/lib/activity/format-relative-time";
+import {
+  recentEditColor,
+  type RecentEditColor,
+} from "@/lib/activity/recent-edit";
 import { getRecentEdits } from "@/lib/activity/recent-edits";
 import { getRecentFiles } from "@/lib/activity/recent-files";
 import { getActivitySummary } from "@/lib/activity/summary";
+
+const RECENT_EDIT_BADGE: Record<RecentEditColor, string> = {
+  word: "border-[#facc15] bg-[#fef9c3] text-[#854d0e]",
+  question: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]",
+  note: "border-[#cbd5e1] bg-[#f1f5f9] text-[#475569]",
+  bookmark: "border-[#fdba74] bg-[#fff7ed] text-[#c2410c]",
+  todo: "border-[#5eead4] bg-[#f0fdfa] text-[#0f766e]",
+  annotation: "border-[#fca5a5] bg-[#fef2f2] text-[#b91c1c]",
+};
 
 export const metadata = {
   title: "浏览数据",
@@ -124,8 +137,12 @@ export default async function ActivityPage() {
                             {item.fileName}
                           </span>
                         </span>
-                        <span className="whitespace-nowrap text-xs text-[#57534e] sm:text-right">
-                          {item.kindLabel} · {item.typeLabel}
+                        <span className="sm:flex sm:justify-end">
+                          <span
+                            className={`inline-flex whitespace-nowrap border px-1.5 py-0.5 text-xs ${RECENT_EDIT_BADGE[recentEditColor(item)]}`}
+                          >
+                            {item.kindLabel} · {item.typeLabel}
+                          </span>
                         </span>
                         <span className="whitespace-nowrap text-xs text-[#a8a29e] sm:text-right">
                           第 {item.pageNumber} 页
