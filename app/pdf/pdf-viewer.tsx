@@ -25,6 +25,7 @@ type RecentItem = {
   pageNumber: number;
   scale: number;
   url: string;
+  updatedAt?: string | number | Date;
 };
 
 export type PdfHighlightRect = {
@@ -405,6 +406,26 @@ async function fetchRecentByFileName(fileName: string): Promise<RecentItem | nul
   return data.item as RecentItem;
 }
 
+async function fetchRecentList(limit = 20): Promise<RecentItem[]> {
+  const res = await fetch(`/api/pdf/recent?limit=${limit}`);
+  const data = await res.json();
+  if (!res.ok || !data.ok || !Array.isArray(data.items)) return [];
+  return data.items as RecentItem[];
+}
+
+function formatRecentTime(value: string | number | Date | undefined): string {
+  if (value == null) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = Date.now();
+  const diff = now - d.getTime();
+  if (diff < 60_000) return "刚刚";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  return d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
 function noteEditorHref(opts: {
   kind: "word" | PinKind;
   id: number;
@@ -438,6 +459,9 @@ export default function PdfViewer({
   const [dragging, setDragging] = useState(false);
   const [booting, setBooting] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [recentMenuOpen, setRecentMenuOpen] = useState(false);
+  const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [highlight, setHighlight] = useState<
     (PdfHighlightRect & { word: string; pageNumber: number }) | null
@@ -472,6 +496,7 @@ export default function PdfViewer({
   const rootRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const recentMenuRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const selectionMenuRef = useRef<HTMLDivElement>(null);
   const markerMenuRef = useRef<HTMLDivElement>(null);
@@ -796,6 +821,45 @@ export default function PdfViewer({
     } finally {
       setUploading(false);
     }
+  }, []);
+
+  const openRecentItem = useCallback(
+    (item: RecentItem) => {
+      setRecentMenuOpen(false);
+      if (item.fileName === fileNameRef.current && file) {
+        skipPersistRef.current = true;
+        setPageNumber(item.pageNumber);
+        setScale(clampScale(item.scale ?? 1));
+        setError(null);
+        onRecentChangeRef.current?.(item);
+        return;
+      }
+      restorePageRef.current = item.pageNumber;
+      skipPersistRef.current = true;
+      setFile(item.url);
+      setFileName(item.fileName);
+      setPageNumber(item.pageNumber);
+      setNumPages(0);
+      setScale(clampScale(item.scale ?? 1));
+      setHighlight(null);
+      setError(null);
+      onRecentChangeRef.current?.(item);
+    },
+    [file],
+  );
+
+  const toggleRecentMenu = useCallback(() => {
+    setRecentMenuOpen((open) => {
+      const next = !open;
+      if (next) {
+        setRecentLoading(true);
+        void fetchRecentList().then((items) => {
+          setRecentItems(items);
+          setRecentLoading(false);
+        });
+      }
+      return next;
+    });
   }, []);
 
   const onDocumentLoadSuccess = useCallback(({ numPages: total }: { numPages: number }) => {
@@ -1638,6 +1702,25 @@ export default function PdfViewer({
   }, [selectionMenu, closeSelectionMenu]);
 
   useEffect(() => {
+    if (!recentMenuOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (recentMenuRef.current?.contains(e.target as Node)) return;
+      setRecentMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRecentMenuOpen(false);
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [recentMenuOpen]);
+
+  useEffect(() => {
     if (!markerMenu) return;
 
     const onPointerDown = (e: PointerEvent) => {
@@ -1838,6 +1921,54 @@ export default function PdfViewer({
   return (
     <div ref={rootRef} className={fillHeight ? "flex h-full min-h-0 flex-col gap-3" : "space-y-4"}>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border border-[#e7e2d9] bg-[#faf8f4] px-3 py-2">
+        <div ref={recentMenuRef} className="relative">
+          <button
+            type="button"
+            onClick={toggleRecentMenu}
+            disabled={uploading || booting}
+            aria-haspopup="menu"
+            aria-expanded={recentMenuOpen}
+            className="border border-[#d6d3d1] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+          >
+            最近打开
+          </button>
+          {recentMenuOpen ? (
+            <div
+              role="menu"
+              className="absolute top-full left-0 z-50 mt-1 max-h-72 w-72 overflow-auto border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
+            >
+              {recentLoading ? (
+                <p className="px-3 py-2 text-sm text-[#78716c]">加载中…</p>
+              ) : recentItems.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-[#78716c]">暂无最近打开的文件</p>
+              ) : (
+                recentItems.map((item) => {
+                  const active = item.fileName === fileName;
+                  const time = formatRecentTime(item.updatedAt);
+                  return (
+                    <button
+                      key={item.fileName}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => openRecentItem(item)}
+                      className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-[#f0ebe3] ${
+                        active ? "bg-[#efebe4]" : ""
+                      }`}
+                    >
+                      <span className="truncate text-sm font-medium text-[#1c1917]">
+                        {item.fileName}
+                      </span>
+                      <span className="text-xs text-[#a8a29e]">
+                        第 {item.pageNumber} 页
+                        {time ? ` · ${time}` : ""}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}

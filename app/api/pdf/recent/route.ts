@@ -33,9 +33,24 @@ function serialize(row: typeof pdfRecentReads.$inferSelect) {
   };
 }
 
-/** 取最近阅读：可按 fileName 查，否则返回最近一条 */
+/** 取最近阅读：fileName 查单条；limit 查列表；否则最近一条 */
 export async function GET(request: Request) {
-  const fileName = new URL(request.url).searchParams.get("fileName")?.trim();
+  const { searchParams } = new URL(request.url);
+  const fileName = searchParams.get("fileName")?.trim();
+  const limitRaw = searchParams.get("limit");
+  const limit =
+    limitRaw != null && limitRaw !== ""
+      ? Math.min(Math.max(1, Number(limitRaw) || 20), 50)
+      : null;
+
+  if (limit != null && !fileName) {
+    const rows = await db
+      .select()
+      .from(pdfRecentReads)
+      .orderBy(desc(pdfRecentReads.updatedAt))
+      .limit(limit);
+    return NextResponse.json({ ok: true, items: rows.map(serialize) });
+  }
 
   const [row] = fileName
     ? await db
