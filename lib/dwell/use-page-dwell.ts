@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { decideDwellIdle, DWELL_IDLE_MS } from "./idle";
 
 /** 失焦后在该时长内切回，视作未切换，仍属同一段 */
 export const DWELL_FOCUS_GAP_MS = 3 * 60 * 1000;
+export { DWELL_IDLE_MS };
+
+const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
 
 type DwellPayload = {
   clientSessionId: string;
@@ -23,6 +27,8 @@ type Options = {
   gapMs?: number;
   /** 进行中心跳上报间隔，避免异常退出丢数据 */
   heartbeatMs?: number;
+  /** 无操作超过该时长视为未阅读；0 关闭。默认 5 分钟 */
+  idleMs?: number;
 };
 
 function newSessionId() {
@@ -54,6 +60,7 @@ function persist(payload: DwellPayload, keepalive = false) {
  * - 离开页面、切站、或失焦：先记离开时刻
  * - 在 gapMs（默认 3 分钟）内切回：视作未切换，同一段继续
  * - 超过 gapMs 再切回：结束上一段，重新开始计时
+ * - 页面仍在前台但 idleMs（默认 5 分钟）内无操作：视为未阅读，在最后一次操作处结束；再次操作才重新计时
  */
 export function usePageDwell({
   pagePath,
@@ -61,9 +68,12 @@ export function usePageDwell({
   enabled = true,
   gapMs = DWELL_FOCUS_GAP_MS,
   heartbeatMs = 30_000,
+  idleMs = DWELL_IDLE_MS,
 }: Options) {
   const gapMsRef = useRef(gapMs);
   gapMsRef.current = gapMs;
+  const idleMsRef = useRef(idleMs);
+  idleMsRef.current = idleMs;
 
   useEffect(() => {
     if (!enabled || !pagePath) return;
@@ -73,9 +83,11 @@ export function usePageDwell({
     if (pagePath === "/pdf" && resolvedKey == null) return;
     let clientSessionId = "";
     let startedAt = 0;
+    let lastActivityAt = 0;
     let blurredAt: number | null = null;
     let ended = false;
     let hasSession = false;
+    let idleTimer = 0;
 
     const buildPayload = (endedAt: number | null): DwellPayload => {
       const end = endedAt ?? Date.now();
@@ -89,18 +101,16 @@ export function usePageDwell({
       };
     };
 
-    const startSession = (at = Date.now()) => {
-      clientSessionId = newSessionId();
-      startedAt = at;
-      blurredAt = null;
-      ended = false;
-      hasSession = true;
-      persist({ ...buildPayload(null), durationMs: 0, endedAt: null });
+    const clearIdleTimer = () => {
+      if (!idleTimer) return;
+      window.clearTimeout(idleTimer);
+      idleTimer = 0;
     };
 
     const endSession = (at: number, keepalive = false) => {
       if (!hasSession || ended) return;
       ended = true;
+      clearIdleTimer();
       persist(
         {
           ...buildPayload(at),
@@ -111,8 +121,42 @@ export function usePageDwell({
       );
     };
 
+    const checkIdle = () => {
+      if (!hasSession || ended || blurredAt != null) return;
+      const decision = decideDwellIdle(Date.now(), lastActivityAt, idleMsRef.current);
+      if (decision.idle) {
+        endSession(decision.endedAt);
+        return;
+      }
+      if (!Number.isFinite(decision.remainingMs)) return;
+      idleTimer = window.setTimeout(checkIdle, decision.remainingMs);
+    };
+
+    const armIdleTimer = () => {
+      clearIdleTimer();
+      const limit = idleMsRef.current;
+      if (limit <= 0 || !hasSession || ended || blurredAt != null) return;
+      idleTimer = window.setTimeout(checkIdle, limit);
+    };
+
+    const startSession = (at = Date.now()) => {
+      clientSessionId = newSessionId();
+      startedAt = at;
+      lastActivityAt = at;
+      blurredAt = null;
+      ended = false;
+      hasSession = true;
+      persist({ ...buildPayload(null), durationMs: 0, endedAt: null });
+      armIdleTimer();
+    };
+
     const saveProgress = (keepalive = false) => {
       if (!hasSession || ended || blurredAt != null) return;
+      const decision = decideDwellIdle(Date.now(), lastActivityAt, idleMsRef.current);
+      if (decision.idle) {
+        endSession(decision.endedAt, keepalive);
+        return;
+      }
       const now = Date.now();
       persist(
         {
@@ -124,8 +168,20 @@ export function usePageDwell({
       );
     };
 
+    const markActivity = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const now = Date.now();
+      lastActivityAt = now;
+      if (blurredAt != null) return;
+      if (!hasSession || ended) {
+        startSession(now);
+        return;
+      }
+    };
+
     const onHidden = () => {
       if (!hasSession || ended || blurredAt != null) return;
+      clearIdleTimer();
       const now = Date.now();
       // 暂存离开时刻；是否拆段等切回后再定
       persist(
@@ -144,9 +200,17 @@ export function usePageDwell({
         startSession(Date.now());
         return;
       }
+      // 空闲结束后仍在前台：切回焦点不算阅读，等操作再计
+      if (ended) {
+        if (blurredAt == null) return;
+        blurredAt = null;
+        startSession(Date.now());
+        return;
+      }
       if (blurredAt == null) return;
       const leftAt = blurredAt;
       blurredAt = null;
+      lastActivityAt = Date.now();
       if (Date.now() - leftAt >= gapMsRef.current) {
         endSession(leftAt);
         startSession(Date.now());
@@ -159,6 +223,7 @@ export function usePageDwell({
         endedAt: null,
         durationMs: Math.max(0, Date.now() - startedAt),
       });
+      armIdleTimer();
     };
 
     const onVisibilityChange = () => {
@@ -177,7 +242,9 @@ export function usePageDwell({
     };
 
     const onPageHide = () => {
-      endSession(blurredAt ?? Date.now(), true);
+      const decision = decideDwellIdle(Date.now(), lastActivityAt, idleMsRef.current);
+      const at = decision.idle ? decision.endedAt : (blurredAt ?? Date.now());
+      endSession(at, true);
     };
 
     const initiallyHidden =
@@ -193,16 +260,25 @@ export function usePageDwell({
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("focus", onWindowFocus);
     window.addEventListener("pagehide", onPageHide);
+    for (const event of ACTIVITY_EVENTS) {
+      window.addEventListener(event, markActivity, { capture: true, passive: true });
+    }
 
     const heartbeat = window.setInterval(() => saveProgress(), heartbeatMs);
 
     return () => {
       window.clearInterval(heartbeat);
+      clearIdleTimer();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("focus", onWindowFocus);
       window.removeEventListener("pagehide", onPageHide);
-      endSession(blurredAt ?? Date.now(), true);
+      for (const event of ACTIVITY_EVENTS) {
+        window.removeEventListener(event, markActivity, { capture: true });
+      }
+      const decision = decideDwellIdle(Date.now(), lastActivityAt, idleMsRef.current);
+      const at = decision.idle ? decision.endedAt : (blurredAt ?? Date.now());
+      endSession(at, true);
     };
   }, [enabled, pagePath, resourceKey, heartbeatMs]);
 }
