@@ -147,6 +147,12 @@ const ARROW_COLOR = "#dc2626";
 const ARROW_STROKE_WIDTH = 2.5;
 const MIN_ARROW_DRAG_PX = 6;
 const LAST_ANNOTATE_TOOL_KEY = "pdf-last-annotate-tool";
+const PDF_VIEW_MODE_KEY = "pdf-view-mode";
+const CONTINUOUS_PAGE_BUFFER = 4;
+const CONTINUOUS_MOUNT_ALL_LIMIT = 30;
+const A4_ASPECT = 297 / 210;
+
+type PdfViewMode = "paged" | "continuous";
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
@@ -182,6 +188,39 @@ function writeLastAnnotateTool(tool: AnnotateToolId) {
   } catch {
     // ignore
   }
+}
+
+function readPdfViewMode(): PdfViewMode {
+  try {
+    const value = localStorage.getItem(PDF_VIEW_MODE_KEY);
+    if (value === "continuous" || value === "paged") return value;
+  } catch {
+    // ignore
+  }
+  return "paged";
+}
+
+function writePdfViewMode(mode: PdfViewMode) {
+  try {
+    localStorage.setItem(PDF_VIEW_MODE_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
+
+function pageFrameFromTarget(target: EventTarget | null): HTMLElement | null {
+  const el = target instanceof Element ? target : null;
+  return (el?.closest("[data-pdf-page-frame]") as HTMLElement | null) ?? null;
+}
+
+function pageElFromFrame(frame: Element | null): HTMLElement | null {
+  return (frame?.querySelector(".react-pdf__Page") as HTMLElement | null) ?? null;
+}
+
+function pageNumberFromFrame(frame: Element | null): number | null {
+  if (!frame) return null;
+  const n = Number((frame as HTMLElement).dataset.pdfPageFrame);
+  return Number.isFinite(n) && n >= 1 ? n : null;
 }
 
 function AnnotateArrowIcon() {
@@ -504,7 +543,10 @@ export default function PdfViewer({
   const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
   const [drawTool, setDrawTool] = useState<DrawTool>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<PdfViewMode>(readPdfViewMode);
+  const [pageAspect, setPageAspect] = useState(A4_ASPECT);
   const [draftArrow, setDraftArrow] = useState<{
+    pageNumber: number;
     x1: number;
     y1: number;
     x2: number;
@@ -521,11 +563,11 @@ export default function PdfViewer({
   const markerMenuRef = useRef<HTMLDivElement>(null);
   const pinEditorRef = useRef<HTMLDivElement>(null);
   const wordMarkEditorRef = useRef<HTMLDivElement>(null);
-  const pageFrameRef = useRef<HTMLDivElement>(null);
   const arrowStrokeRef = useRef<{
     x1: number;
     y1: number;
     pointerId: number;
+    pageNumber: number;
   } | null>(null);
   const pinDragRef = useRef<{
     kind: PinKind;
@@ -558,6 +600,9 @@ export default function PdfViewer({
   } | null>(null);
   const skipPersistRef = useRef(true);
   const highlightTimerRef = useRef<number | null>(null);
+  const viewModeRef = useRef(viewMode);
+  const pendingScrollPageRef = useRef<number | null>(null);
+  const skipScrollSyncRef = useRef(false);
 
   useEffect(() => {
     setLastAnnotateTool(readLastAnnotateTool());
@@ -597,6 +642,10 @@ export default function PdfViewer({
   useEffect(() => {
     fileNameRef.current = fileName;
   }, [fileName]);
+
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -724,6 +773,9 @@ export default function PdfViewer({
         } else {
           skipPersistRef.current = true;
           setPageNumber(jumpRequest.pageNumber);
+          if (viewModeRef.current === "continuous") {
+            pendingScrollPageRef.current = jumpRequest.pageNumber;
+          }
           setError(null);
         }
 
@@ -876,6 +928,9 @@ export default function PdfViewer({
       if (item.fileName === fileNameRef.current && file) {
         skipPersistRef.current = true;
         setPageNumber(item.pageNumber);
+        if (viewModeRef.current === "continuous") {
+          pendingScrollPageRef.current = item.pageNumber;
+        }
         setScale(clampScale(item.scale ?? 1));
         setError(null);
         onRecentChangeRef.current?.(item);
@@ -917,6 +972,9 @@ export default function PdfViewer({
       const next = Math.min(Math.max(1, restore), total);
       skipPersistRef.current = true;
       setPageNumber(next);
+      if (viewModeRef.current === "continuous") {
+        pendingScrollPageRef.current = next;
+      }
       if (pendingJumpRef.current) {
         pendingJumpRef.current = { ...pendingJumpRef.current, pageNumber: next };
       }
@@ -935,19 +993,36 @@ export default function PdfViewer({
     setHighlight(null);
     setPageNumber(next);
     setPageInput(String(next));
-    scrollAreaRef.current?.scrollTo({ top: 0 });
+    if (viewModeRef.current === "continuous") {
+      pendingScrollPageRef.current = next;
+    } else {
+      scrollAreaRef.current?.scrollTo({ top: 0 });
+    }
   }, [file, numPages, pageInput, pageNumber]);
 
   const goPrevPage = useCallback(() => {
     setHighlight(null);
-    setPageNumber((p) => Math.max(1, p - 1));
-    // scrollAreaRef.current?.scrollTo({ top: 0 });
+    setPageNumber((p) => {
+      const next = Math.max(1, p - 1);
+      if (viewModeRef.current === "continuous") {
+        pendingScrollPageRef.current = next;
+      }
+      return next;
+    });
   }, []);
 
   const goNextPage = useCallback(() => {
     setHighlight(null);
-    setPageNumber((p) => Math.min(numPages, p + 1));
-    scrollAreaRef.current?.scrollTo({ top: 0 });
+    setPageNumber((p) => {
+      const next = Math.min(numPages, p + 1);
+      if (viewModeRef.current === "continuous") {
+        pendingScrollPageRef.current = next;
+      }
+      return next;
+    });
+    if (viewModeRef.current !== "continuous") {
+      scrollAreaRef.current?.scrollTo({ top: 0 });
+    }
   }, [numPages]);
 
   // react-pdf 把 onItemClick 封进 useRef，只会拿到首次回调；必须用稳定函数 + ref 读最新页数
@@ -957,18 +1032,49 @@ export default function PdfViewer({
     const next = total > 0 ? Math.min(Math.max(1, target), total) : Math.max(1, target);
     setHighlight(null);
     setPageNumber(next);
-    scrollAreaRef.current?.scrollTo({ top: 0 });
+    if (viewModeRef.current === "continuous") {
+      pendingScrollPageRef.current = next;
+    } else {
+      scrollAreaRef.current?.scrollTo({ top: 0 });
+    }
+  }, []);
+
+  const changeViewMode = useCallback((mode: PdfViewMode) => {
+    if (mode === viewModeRef.current) return;
+    setViewMode(mode);
+    writePdfViewMode(mode);
+    if (mode === "continuous") {
+      pendingScrollPageRef.current = pageNumberRef.current;
+    } else {
+      scrollAreaRef.current?.scrollTo({ top: 0 });
+    }
   }, []);
 
   const pageWidth = useMemo(() => {
     if (!containerWidth) return undefined;
-    // 两侧窄条翻页按钮各约 40px，再留一点边距
-    return Math.min(containerWidth - 96, 900) * scale;
-  }, [containerWidth, scale]);
+    const gutter = viewMode === "continuous" ? 32 : 96;
+    return Math.min(containerWidth - gutter, 900) * scale;
+  }, [containerWidth, scale, viewMode]);
+
+  const estimatedPageHeight = useMemo(() => {
+    const width = pageWidth ?? Math.max(0, containerWidth - (viewMode === "continuous" ? 32 : 96));
+    return Math.max(120, width * pageAspect);
+  }, [pageWidth, containerWidth, viewMode, pageAspect]);
+
+  const continuousWindow = useMemo(() => {
+    if (viewMode !== "continuous" || numPages < 1) {
+      return { start: pageNumber, end: pageNumber };
+    }
+    return {
+      start: Math.max(1, pageNumber - CONTINUOUS_PAGE_BUFFER),
+      end: Math.min(numPages, pageNumber + CONTINUOUS_PAGE_BUFFER),
+    };
+  }, [viewMode, numPages, pageNumber]);
 
   const fitToWidth = useCallback(() => {
     if (!containerWidth || !fileName) return;
-    const available = containerWidth - 96;
+    const gutter = viewModeRef.current === "continuous" ? 32 : 96;
+    const available = containerWidth - gutter;
     if (available <= 0) return;
     const base = Math.min(available, 900);
     const next = clampScale(Math.round((available / base) * 100) / 100);
@@ -976,6 +1082,9 @@ export default function PdfViewer({
       if (prev !== next) skipPersistRef.current = true;
       return next;
     });
+    if (viewModeRef.current === "continuous") {
+      pendingScrollPageRef.current = pageNumberRef.current;
+    }
     void saveRecentProgress(fileName, pageNumber, next).then(() => {
       onRecentChangeRef.current?.({
         fileName,
@@ -997,17 +1106,30 @@ export default function PdfViewer({
     return () => timers.forEach((id) => window.clearTimeout(id));
   }, [highlight, pageNumber, pageWidth, centerHighlight]);
 
-  const onPageRenderSuccess = useCallback(() => {
-    const pending = pendingJumpRef.current;
-    if (pending && pending.pageNumber === pageNumberRef.current) {
-      pendingJumpRef.current = null;
-      showHighlight(pending.rects, pending.word, pending.pageNumber);
-      return;
-    }
-    if (highlightRef.current) {
-      centerHighlight();
-    }
-  }, [centerHighlight, showHighlight]);
+  const onPageLoadSuccess = useCallback(
+    (page: { originalWidth: number; originalHeight: number }) => {
+      if (page.originalWidth <= 0) return;
+      const aspect = page.originalHeight / page.originalWidth;
+      setPageAspect((prev) => (Math.abs(prev - aspect) < 0.002 ? prev : aspect));
+    },
+    [],
+  );
+
+  const onPageRenderSuccess = useCallback(
+    (renderedPage?: number) => {
+      const page = renderedPage ?? pageNumberRef.current;
+      const pending = pendingJumpRef.current;
+      if (pending && pending.pageNumber === page) {
+        pendingJumpRef.current = null;
+        showHighlight(pending.rects, pending.word, pending.pageNumber);
+        return;
+      }
+      if (highlightRef.current) {
+        centerHighlight();
+      }
+    },
+    [centerHighlight, showHighlight],
+  );
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
@@ -1145,39 +1267,75 @@ export default function PdfViewer({
     onWordMarksChangeRef.current?.();
   }, [paused, fileName, loadPins, loadWordMarks]);
 
-  const getPageNormPoint = useCallback((clientX: number, clientY: number): NormPoint | null => {
-    const pageEl =
-      pageFrameRef.current?.querySelector(".react-pdf__Page") ??
-      (containerRef.current?.querySelector(".react-pdf__Page") as Element | null);
-    if (!pageEl) return null;
-    const box = (pageEl as HTMLElement).getBoundingClientRect();
-    if (box.width <= 0 || box.height <= 0) return null;
-    return {
-      x: round4(clamp01((clientX - box.left) / box.width)),
-      y: round4(clamp01((clientY - box.top) / box.height)),
-    };
-  }, []);
+  const getPageHit = useCallback(
+    (
+      clientX: number,
+      clientY: number,
+      target?: EventTarget | null,
+    ): { pageEl: HTMLElement; pageNumber: number; box: DOMRect } | null => {
+      const hinted = pageFrameFromTarget(target ?? null);
+      let frame: Element | null = hinted;
+      if (!frame) {
+        const root = containerRef.current;
+        if (!root) return null;
+        for (const node of root.querySelectorAll("[data-pdf-page-frame]")) {
+          const pageEl = pageElFromFrame(node);
+          if (!pageEl) continue;
+          const box = pageEl.getBoundingClientRect();
+          if (
+            clientX >= box.left &&
+            clientX <= box.right &&
+            clientY >= box.top &&
+            clientY <= box.bottom
+          ) {
+            frame = node;
+            break;
+          }
+        }
+      }
+      const pageEl = pageElFromFrame(frame);
+      const page = pageNumberFromFrame(frame);
+      if (!pageEl || page == null) return null;
+      const box = pageEl.getBoundingClientRect();
+      if (box.width <= 0 || box.height <= 0) return null;
+      return { pageEl, pageNumber: page, box };
+    },
+    [],
+  );
 
-  const getPageNormRect = useCallback((clientX: number, clientY: number): PdfHighlightRect | null => {
-    const pageEl =
-      pageFrameRef.current?.querySelector(".react-pdf__Page") ??
-      (containerRef.current?.querySelector(".react-pdf__Page") as Element | null);
-    if (!pageEl) return null;
-    const box = (pageEl as HTMLElement).getBoundingClientRect();
-    if (box.width <= 0 || box.height <= 0) return null;
+  const getPageNormPoint = useCallback(
+    (clientX: number, clientY: number, target?: EventTarget | null): (NormPoint & { pageNumber: number }) | null => {
+      const hit = getPageHit(clientX, clientY, target);
+      if (!hit) return null;
+      return {
+        x: round4(clamp01((clientX - hit.box.left) / hit.box.width)),
+        y: round4(clamp01((clientY - hit.box.top) / hit.box.height)),
+        pageNumber: hit.pageNumber,
+      };
+    },
+    [getPageHit],
+  );
 
-    const width = QUESTION_MARKER_PX / box.width;
-    const height = QUESTION_MARKER_PX / box.height;
-    const left = (clientX - box.left) / box.width - width / 2;
-    const top = (clientY - box.top) / box.height - height / 2;
+  const getPageNormRect = useCallback(
+    (clientX: number, clientY: number, target?: EventTarget | null): (PdfHighlightRect & { pageNumber: number }) | null => {
+      const hit = getPageHit(clientX, clientY, target);
+      if (!hit) return null;
 
-    return {
-      left: round4(Math.min(Math.max(0, left), Math.max(0, 1 - width))),
-      top: round4(Math.min(Math.max(0, top), Math.max(0, 1 - height))),
-      width: round4(width),
-      height: round4(height),
-    };
-  }, []);
+      const width = QUESTION_MARKER_PX / hit.box.width;
+      const height = QUESTION_MARKER_PX / hit.box.height;
+      const left = (clientX - hit.box.left) / hit.box.width - width / 2;
+      const top = (clientY - hit.box.top) / hit.box.height - height / 2;
+
+      return {
+        left: round4(Math.min(Math.max(0, left), Math.max(0, 1 - width))),
+        top: round4(Math.min(Math.max(0, top), Math.max(0, 1 - height))),
+        width: round4(width),
+        height: round4(height),
+        pageNumber: hit.pageNumber,
+      };
+    },
+    [getPageHit],
+  );
 
   const startArrowTool = useCallback(() => {
     closeContextMenu();
@@ -1212,7 +1370,7 @@ export default function PdfViewer({
   }, []);
 
   const saveArrowAnnotation = useCallback(
-    async (stroke: { x1: number; y1: number; x2: number; y2: number }) => {
+    async (stroke: { pageNumber: number; x1: number; y1: number; x2: number; y2: number }) => {
       if (!fileName) return;
       try {
         const res = await fetch("/api/pdf/annotations", {
@@ -1220,9 +1378,12 @@ export default function PdfViewer({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fileName,
-            pageNumber: pageNumberRef.current,
+            pageNumber: stroke.pageNumber,
             type: "arrow",
-            ...stroke,
+            x1: stroke.x1,
+            y1: stroke.y1,
+            x2: stroke.x2,
+            y2: stroke.y2,
             color: ARROW_COLOR,
             strokeWidth: ARROW_STROKE_WIDTH,
           }),
@@ -1243,7 +1404,7 @@ export default function PdfViewer({
   const onArrowPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0 || drawTool !== "arrow") return;
-      const point = getPageNormPoint(e.clientX, e.clientY);
+      const point = getPageNormPoint(e.clientX, e.clientY, e.currentTarget);
       if (!point) return;
       e.preventDefault();
       e.stopPropagation();
@@ -1251,8 +1412,15 @@ export default function PdfViewer({
         x1: point.x,
         y1: point.y,
         pointerId: e.pointerId,
+        pageNumber: point.pageNumber,
       };
-      setDraftArrow({ x1: point.x, y1: point.y, x2: point.x, y2: point.y });
+      setDraftArrow({
+        pageNumber: point.pageNumber,
+        x1: point.x,
+        y1: point.y,
+        x2: point.x,
+        y2: point.y,
+      });
       e.currentTarget.setPointerCapture(e.pointerId);
     },
     [drawTool, getPageNormPoint],
@@ -1262,9 +1430,15 @@ export default function PdfViewer({
     (e: ReactPointerEvent<HTMLDivElement>) => {
       const stroke = arrowStrokeRef.current;
       if (!stroke || stroke.pointerId !== e.pointerId) return;
-      const point = getPageNormPoint(e.clientX, e.clientY);
+      const point = getPageNormPoint(e.clientX, e.clientY, e.currentTarget);
       if (!point) return;
-      setDraftArrow({ x1: stroke.x1, y1: stroke.y1, x2: point.x, y2: point.y });
+      setDraftArrow({
+        pageNumber: stroke.pageNumber,
+        x1: stroke.x1,
+        y1: stroke.y1,
+        x2: point.x,
+        y2: point.y,
+      });
     },
     [getPageNormPoint],
   );
@@ -1278,34 +1452,36 @@ export default function PdfViewer({
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
 
-      const point = getPageNormPoint(e.clientX, e.clientY) ?? {
+      const point = getPageNormPoint(e.clientX, e.clientY, e.currentTarget) ?? {
         x: draftArrow?.x2 ?? stroke.x1,
         y: draftArrow?.y2 ?? stroke.y1,
+        pageNumber: stroke.pageNumber,
       };
       arrowStrokeRef.current = null;
       setDraftArrow(null);
 
-      const pageEl =
-        pageFrameRef.current?.querySelector(".react-pdf__Page") as HTMLElement | null;
-      const box = pageEl?.getBoundingClientRect();
+      const hit = getPageHit(e.clientX, e.clientY, e.currentTarget);
+      const box = hit?.box;
       const dxPx = box ? Math.abs(point.x - stroke.x1) * box.width : 0;
       const dyPx = box ? Math.abs(point.y - stroke.y1) * box.height : 0;
       if (Math.hypot(dxPx, dyPx) < MIN_ARROW_DRAG_PX) return;
 
       void saveArrowAnnotation({
+        pageNumber: stroke.pageNumber,
         x1: stroke.x1,
         y1: stroke.y1,
         x2: point.x,
         y2: point.y,
       });
     },
-    [getPageNormPoint, draftArrow, saveArrowAnnotation],
+    [getPageNormPoint, getPageHit, draftArrow, saveArrowAnnotation],
   );
   const onPdfContextMenu = useCallback(
     (e: MouseEvent) => {
       if (!file || booting) return;
-      const rect = getPageNormRect(e.clientX, e.clientY);
+      const rect = getPageNormRect(e.clientX, e.clientY, e.target);
       if (!rect) return;
+      const { pageNumber: targetPage, left, top, width, height } = rect;
       e.preventDefault();
       closeMarkerMenu();
       closeSelectionMenu();
@@ -1317,8 +1493,8 @@ export default function PdfViewer({
       setContextMenu({
         x: Math.max(8, x),
         y: Math.max(8, y),
-        pageNumber: pageNumberRef.current,
-        rect,
+        pageNumber: targetPage,
+        rect: { left, top, width, height },
       });
     },
     [file, booting, getPageNormRect, closeMarkerMenu, closeSelectionMenu],
@@ -1681,7 +1857,7 @@ export default function PdfViewer({
       const drag = pinDragRef.current;
       if (!drag || drag.kind !== kind || drag.id !== Number(e.currentTarget.dataset.pinId)) return;
 
-      const pageEl = containerRef.current?.querySelector(".react-pdf__Page") as HTMLElement | null;
+      const pageEl = pageElFromFrame(pageFrameFromTarget(e.currentTarget));
       if (!pageEl) return;
       const box = pageEl.getBoundingClientRect();
       if (box.width <= 0 || box.height <= 0) return;
@@ -1881,6 +2057,7 @@ export default function PdfViewer({
   }, [activeWordMarkId, closeWordMarkEditor]);
 
   useEffect(() => {
+    if (viewMode === "continuous") return;
     closeContextMenu();
     closeMarkerMenu();
     closeSelectionMenu();
@@ -1891,12 +2068,66 @@ export default function PdfViewer({
     arrowStrokeRef.current = null;
   }, [
     pageNumber,
+    viewMode,
     closeContextMenu,
     closeMarkerMenu,
     closeSelectionMenu,
     closePinEditor,
     closeWordMarkEditor,
   ]);
+
+  useEffect(() => {
+    if (viewMode !== "continuous") return;
+    const root = scrollAreaRef.current;
+    if (!root) return;
+
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        if (skipScrollSyncRef.current) return;
+        const mid = root.scrollTop + root.clientHeight / 2;
+        let best = pageNumberRef.current;
+        let bestDist = Infinity;
+        root.querySelectorAll("[data-pdf-page-slot]").forEach((node) => {
+          const el = node as HTMLElement;
+          const n = Number(el.dataset.pdfPageSlot);
+          if (!Number.isFinite(n)) return;
+          const center = el.offsetTop + el.offsetHeight / 2;
+          const dist = Math.abs(center - mid);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = n;
+          }
+        });
+        if (best !== pageNumberRef.current) setPageNumber(best);
+      });
+    };
+
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [viewMode, file, numPages]);
+
+  useEffect(() => {
+    if (viewMode !== "continuous") return;
+    const target = pendingScrollPageRef.current;
+    if (target == null) return;
+    const el = scrollAreaRef.current?.querySelector(
+      `[data-pdf-page-slot="${target}"]`,
+    ) as HTMLElement | null;
+    if (!el) return;
+    skipScrollSyncRef.current = true;
+    el.scrollIntoView({ block: "start" });
+    pendingScrollPageRef.current = null;
+    const timer = window.setTimeout(() => {
+      skipScrollSyncRef.current = false;
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [viewMode, pageNumber, numPages, pageWidth, continuousWindow.start, continuousWindow.end]);
 
   useEffect(() => {
     if (!drawTool) return;
@@ -1969,39 +2200,6 @@ export default function PdfViewer({
     return markerMenu.x + 140 + 120 > window.innerWidth - 8;
   }, [markerMenu]);
 
-  const pageQuestions = useMemo(
-    () => pins.filter((q) => q.type === "question" && q.pageNumber === pageNumber),
-    [pins, pageNumber],
-  );
-
-  const pageNotes = useMemo(
-    () => pins.filter((n) => n.type === "note" && n.pageNumber === pageNumber),
-    [pins, pageNumber],
-  );
-
-  const pageBookmarks = useMemo(
-    () => pins.filter((b) => b.type === "bookmark" && b.pageNumber === pageNumber),
-    [pins, pageNumber],
-  );
-
-  const pageTodos = useMemo(
-    () => pins.filter((t) => t.type === "todo" && t.pageNumber === pageNumber),
-    [pins, pageNumber],
-  );
-
-  const pageArrows = useMemo(
-    () => annotations.filter((a) => a.pageNumber === pageNumber && a.type === "arrow"),
-    [annotations, pageNumber],
-  );
-
-  const pageWordMarks = useMemo(
-    () =>
-      wordMarks.filter(
-        (m) => m.pageNumber === pageNumber && m.note.trim().length > 0,
-      ),
-    [wordMarks, pageNumber],
-  );
-
   const activePinItem = useMemo(() => {
     if (!activePin) return null;
     return pins.find((p) => p.id === activePin.id && p.type === activePin.kind) ?? null;
@@ -2010,9 +2208,9 @@ export default function PdfViewer({
   const hoveredPinItem = useMemo(() => {
     if (!hoveredPin || draggingPin || activePin || markerMenu) return null;
     const pin = pins.find((p) => p.id === hoveredPin.id && p.type === hoveredPin.kind);
-    if (!pin || pin.pageNumber !== pageNumber || !pin.content.trim()) return null;
+    if (!pin || !pin.content.trim()) return null;
     return pin;
-  }, [hoveredPin, draggingPin, activePin, markerMenu, pins, pageNumber]);
+  }, [hoveredPin, draggingPin, activePin, markerMenu, pins]);
 
   const activeWordMarkItem = useMemo(() => {
     if (activeWordMarkId == null) return null;
@@ -2139,7 +2337,12 @@ export default function PdfViewer({
           <button
             type="button"
             disabled={!file || scale <= 0.5}
-            onClick={() => setScale((s) => Math.max(0.5, Math.round((s - 0.1) * 10) / 10))}
+            onClick={() => {
+              if (viewModeRef.current === "continuous") {
+                pendingScrollPageRef.current = pageNumberRef.current;
+              }
+              setScale((s) => Math.max(0.5, Math.round((s - 0.1) * 10) / 10));
+            }}
             className="border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
             aria-label="缩小"
           >
@@ -2151,7 +2354,12 @@ export default function PdfViewer({
           <button
             type="button"
             disabled={!file || scale >= 2.5}
-            onClick={() => setScale((s) => Math.min(2.5, Math.round((s + 0.1) * 10) / 10))}
+            onClick={() => {
+              if (viewModeRef.current === "continuous") {
+                pendingScrollPageRef.current = pageNumberRef.current;
+              }
+              setScale((s) => Math.min(2.5, Math.round((s + 0.1) * 10) / 10));
+            }}
             className="border border-[#d6d3d1] bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
             aria-label="放大"
           >
@@ -2166,6 +2374,37 @@ export default function PdfViewer({
             title="适应宽度"
           >
             适应宽度
+          </button>
+        </div>
+
+        <div className="flex items-center">
+          <button
+            type="button"
+            disabled={!file}
+            aria-pressed={viewMode === "paged"}
+            onClick={() => changeViewMode("paged")}
+            className={`border px-2.5 py-1.5 text-sm disabled:opacity-40 ${
+              viewMode === "paged"
+                ? "border-[#a8a29e] bg-[#efebe4] font-medium text-[#1c1917]"
+                : "border-[#d6d3d1] bg-white text-[#57534e] hover:bg-[#f0ebe3]"
+            }`}
+            title="单页左右翻页"
+          >
+            单页
+          </button>
+          <button
+            type="button"
+            disabled={!file}
+            aria-pressed={viewMode === "continuous"}
+            onClick={() => changeViewMode("continuous")}
+            className={`-ml-px border px-2.5 py-1.5 text-sm disabled:opacity-40 ${
+              viewMode === "continuous"
+                ? "border-[#a8a29e] bg-[#efebe4] font-medium text-[#1c1917]"
+                : "border-[#d6d3d1] bg-white text-[#57534e] hover:bg-[#f0ebe3]"
+            }`}
+            title="连续滚动阅读"
+          >
+            连续
           </button>
         </div>
       </div>
@@ -2202,7 +2441,7 @@ export default function PdfViewer({
             已选中箭头 · 右键删除 / Delete · Esc 取消选中
           </div>
         ) : null}
-        {file && !booting ? (
+        {file && !booting && viewMode === "paged" ? (
           <>
             <button
               type="button"
@@ -2243,23 +2482,69 @@ export default function PdfViewer({
         ) : (
           <div
             ref={scrollAreaRef}
-            className={`flex justify-center overflow-auto px-12 py-4 ${fillHeight ? "h-full" : ""}`}
+            className={`overflow-auto py-4 ${
+              viewMode === "continuous" ? "px-4" : "flex justify-center px-12"
+            } ${fillHeight ? "h-full" : ""}`}
           >
             <Document
               file={file}
+              className={viewMode === "continuous" ? "flex flex-col items-center" : undefined}
               onLoadSuccess={onDocumentLoadSuccess}
               onLoadError={() => setError("无法加载该 PDF，请换一个文件试试")}
               onItemClick={onItemClick}
               loading={<p className="py-16 text-sm text-[#78716c]">正在加载 PDF…</p>}
               error={<p className="py-16 text-sm text-[#b91c1c]">加载失败</p>}
             >
-              <div ref={pageFrameRef} className="relative inline-block shadow-sm">
+              {(viewMode === "continuous" && numPages > 0
+                ? Array.from({ length: numPages }, (_, i) => i + 1)
+                : [pageNumber]
+              ).map((sheetPage) => {
+                const mounted =
+                  viewMode !== "continuous" ||
+                  numPages <= CONTINUOUS_MOUNT_ALL_LIMIT ||
+                  (sheetPage >= continuousWindow.start && sheetPage <= continuousWindow.end);
+                const arrowHeadId = `pdf-arrow-head-${sheetPage}`;
+                const arrowHeadSelectedId = `pdf-arrow-head-selected-${sheetPage}`;
+                const pageQuestions = pins.filter(
+                  (q) => q.type === "question" && q.pageNumber === sheetPage,
+                );
+                const pageNotes = pins.filter(
+                  (n) => n.type === "note" && n.pageNumber === sheetPage,
+                );
+                const pageBookmarks = pins.filter(
+                  (b) => b.type === "bookmark" && b.pageNumber === sheetPage,
+                );
+                const pageTodos = pins.filter(
+                  (t) => t.type === "todo" && t.pageNumber === sheetPage,
+                );
+                const pageArrows = annotations.filter(
+                  (a) => a.pageNumber === sheetPage && a.type === "arrow",
+                );
+                const pageWordMarks = wordMarks.filter(
+                  (m) => m.pageNumber === sheetPage && m.note.trim().length > 0,
+                );
+                return (
+                <div
+                  key={sheetPage}
+                  data-pdf-page-slot={sheetPage}
+                  className={
+                    viewMode === "continuous" ? "mb-3 flex justify-center last:mb-0" : undefined
+                  }
+                  style={
+                    viewMode === "continuous" && !mounted
+                      ? { height: estimatedPageHeight }
+                      : undefined
+                  }
+                >
+                  {mounted ? (
+              <div data-pdf-page-frame={sheetPage} className="relative inline-block shadow-sm">
                 <Page
-                  pageNumber={pageNumber}
+                  pageNumber={sheetPage}
                   width={pageWidth}
                   renderTextLayer
                   renderAnnotationLayer
-                  onRenderSuccess={onPageRenderSuccess}
+                  onLoadSuccess={onPageLoadSuccess}
+                  onRenderSuccess={() => onPageRenderSuccess(sheetPage)}
                   loading={<p className="py-16 text-sm text-[#78716c]">渲染中…</p>}
                 />
                 <svg
@@ -2267,7 +2552,7 @@ export default function PdfViewer({
                 >
                   <defs>
                     <marker
-                      id="pdf-arrow-head"
+                      id={arrowHeadId}
                       markerWidth="8"
                       markerHeight="8"
                       refX="7"
@@ -2278,7 +2563,7 @@ export default function PdfViewer({
                       <path d="M0,0 L8,4 L0,8 Z" fill={ARROW_COLOR} />
                     </marker>
                     <marker
-                      id="pdf-arrow-head-selected"
+                      id={arrowHeadSelectedId}
                       markerWidth="8"
                       markerHeight="8"
                       refX="7"
@@ -2299,7 +2584,7 @@ export default function PdfViewer({
                       color={a.color || ARROW_COLOR}
                       strokeWidth={a.strokeWidth || ARROW_STROKE_WIDTH}
                       markerId={
-                        selectedAnnotationId === a.id ? "pdf-arrow-head-selected" : "pdf-arrow-head"
+                        selectedAnnotationId === a.id ? arrowHeadSelectedId : arrowHeadId
                       }
                       selected={selectedAnnotationId === a.id}
                       interactive={!drawTool}
@@ -2309,7 +2594,7 @@ export default function PdfViewer({
                       }
                     />
                   ))}
-                  {draftArrow ? (
+                  {draftArrow && draftArrow.pageNumber === sheetPage ? (
                     <ArrowMarkup
                       x1={draftArrow.x1}
                       y1={draftArrow.y1}
@@ -2317,7 +2602,7 @@ export default function PdfViewer({
                       y2={draftArrow.y2}
                       color={ARROW_COLOR}
                       strokeWidth={ARROW_STROKE_WIDTH}
-                      markerId="pdf-arrow-head"
+                      markerId={arrowHeadId}
                     />
                   ) : null}
                 </svg>
@@ -2334,7 +2619,7 @@ export default function PdfViewer({
                     }}
                   />
                 ) : null}
-                {highlight && highlight.pageNumber === pageNumber
+                {highlight && highlight.pageNumber === sheetPage
                   ? highlight.rects.map((r, i) => (
                       <div
                         key={`hl-${i}`}
@@ -2549,14 +2834,14 @@ export default function PdfViewer({
                     </button>
                   );
                 })}
-                {hoveredPinItem ? (
+                {hoveredPinItem && hoveredPinItem.pageNumber === sheetPage ? (
                   <PinMarkdownPreview
                     pin={hoveredPinItem}
                     onPointerEnter={() => onPinHoverStart(hoveredPinItem.type, hoveredPinItem)}
                     onPointerLeave={onPinHoverEnd}
                   />
                 ) : null}
-                {activePin && activePinItem && activePinItem.pageNumber === pageNumber ? (
+                {activePin && activePinItem && activePinItem.pageNumber === sheetPage ? (
                   <div
                     ref={pinEditorRef}
                     className="absolute z-40 w-56 border border-[#d6d3d1] bg-[#faf8f4] p-2 shadow-md"
@@ -2633,7 +2918,7 @@ export default function PdfViewer({
                     </div>
                   </div>
                 ) : null}
-                {activeWordMarkItem && activeWordMarkItem.pageNumber === pageNumber ? (
+                {activeWordMarkItem && activeWordMarkItem.pageNumber === sheetPage ? (
                   <div
                     ref={wordMarkEditorRef}
                     className="absolute z-40 w-56 border border-[#d6d3d1] bg-[#faf8f4] p-2 shadow-md"
@@ -2714,6 +2999,10 @@ export default function PdfViewer({
                   </div>
                 ) : null}
               </div>
+                  ) : null}
+                </div>
+                );
+              })}
             </Document>
           </div>
         )}

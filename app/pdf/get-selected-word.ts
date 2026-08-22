@@ -256,11 +256,14 @@ export function getSelectedWordInfo(options: {
   if (rects.length === 0 || rect.width <= 0 || rect.height <= 0) return null;
 
   const { before, after } = getSelectionContext(range, pageEl);
+  const fromDom = Number(pageEl.dataset.pageNumber);
+  const pageNumber =
+    Number.isFinite(fromDom) && fromDom >= 1 ? fromDom : options.pageNumber;
   const base = {
     word,
     raw,
     type,
-    pageNumber: options.pageNumber,
+    pageNumber,
     fileName: options.fileName,
     rect,
     rects,
