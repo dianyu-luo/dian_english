@@ -938,12 +938,18 @@ export default function PdfViewer({
     (item: RecentItem) => {
       setRecentMenuOpen(false);
       if (item.fileName === fileNameRef.current && file) {
-        skipPersistRef.current = true;
-        setPageNumber(item.pageNumber);
+        setPageNumber((p) => {
+          if (p !== item.pageNumber) skipPersistRef.current = true;
+          return item.pageNumber;
+        });
         if (viewModeRef.current === "continuous") {
           pendingScrollPageRef.current = item.pageNumber;
         }
-        setScale(clampScale(item.scale ?? 1));
+        setScale((s) => {
+          const next = clampScale(item.scale ?? 1);
+          if (s !== next) skipPersistRef.current = true;
+          return next;
+        });
         setError(null);
         onRecentChangeRef.current?.(item);
         return;
@@ -982,8 +988,10 @@ export default function PdfViewer({
     restorePageRef.current = null;
     if (restore != null) {
       const next = Math.min(Math.max(1, restore), total);
-      skipPersistRef.current = true;
-      setPageNumber(next);
+      if (next !== pageNumberRef.current) {
+        skipPersistRef.current = true;
+        setPageNumber(next);
+      }
       if (viewModeRef.current === "continuous") {
         pendingScrollPageRef.current = next;
       }
