@@ -315,8 +315,10 @@ export default function PdfPageClient({
       <header className="shrink-0 border-b border-[#e7e2d9] bg-[#faf8f4]/px-4 py-3 sm:px-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <p className="text-lg font-semibold tracking-tight">NE</p>
-            <span className="hidden text-[#d6d3d1] sm:inline">/</span>
+            <Link href="/" className="flex items-center gap-3" aria-label="返回首页">
+              <span className="text-lg font-semibold tracking-tight">NE</span>
+              <span className="hidden text-[#d6d3d1] sm:inline">/</span>
+            </Link>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{paused ? "笔记" : "PDF 阅读"}</p>
               {recent ? (
