@@ -20,6 +20,13 @@ function clampScale(value: number) {
   return Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(value * 100) / 100));
 }
 
+function parseTotalNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.floor(n);
+}
+
 function serialize(row: typeof pdfRecentReads.$inferSelect) {
   return {
     id: row.id,
@@ -155,12 +162,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, item: serialize(row) });
   }
 
-  let body: { fileName?: string; pageNumber?: number; scale?: number };
+  let body: { fileName?: string; pageNumber?: number; scale?: number; totalNumber?: number };
   try {
     body = (await request.json()) as {
       fileName?: string;
       pageNumber?: number;
       scale?: number;
+      totalNumber?: number;
     };
   } catch {
     return NextResponse.json({ ok: false, error: "无效 JSON" }, { status: 400 });
@@ -169,6 +177,7 @@ export async function POST(request: Request) {
   const fileName = body.fileName?.trim();
   const pageNumber = body.pageNumber;
   const scale = body.scale;
+  const totalNumber = parseTotalNumber(body.totalNumber);
 
   const hasPage =
     typeof pageNumber === "number" && Number.isFinite(pageNumber) && pageNumber >= 1;
@@ -193,6 +202,7 @@ export async function POST(request: Request) {
     .set({
       ...(hasPage ? { pageNumber: Math.floor(pageNumber) } : {}),
       ...(hasScale ? { scale: clampScale(scale) } : {}),
+      ...(totalNumber != null ? { totalNumber } : {}),
       updatedAt: new Date(),
     })
     .where(eq(pdfRecentReads.fileName, fileName))

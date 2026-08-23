@@ -5,6 +5,8 @@ export const pdfRecentReads = sqliteTable("pdf_recent_reads", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   fileName: text("file_name").notNull().unique(),
   pageNumber: integer("page_number").notNull().default(1),
+  /** PDF 总页数 */
+  totalNumber: integer("total_number").notNull().default(0),
   scale: real("scale").notNull().default(1),
   storageKey: text("storage_key").notNull(),
   fileSize: integer("file_size").notNull().default(0),

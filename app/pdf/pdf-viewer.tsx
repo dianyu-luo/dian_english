@@ -446,11 +446,23 @@ function clampScale(value: number) {
   return Math.min(2.5, Math.max(0.5, Math.round(value * 100) / 100));
 }
 
-async function saveRecentProgress(fileName: string, pageNumber: number, scale: number) {
+async function saveRecentProgress(
+  fileName: string,
+  pageNumber: number,
+  scale: number,
+  totalNumber?: number,
+) {
   await fetch("/api/pdf/recent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileName, pageNumber, scale: clampScale(scale) }),
+    body: JSON.stringify({
+      fileName,
+      pageNumber,
+      scale: clampScale(scale),
+      ...(typeof totalNumber === "number" && totalNumber >= 1
+        ? { totalNumber: Math.floor(totalNumber) }
+        : {}),
+    }),
   });
 }
 
@@ -733,7 +745,7 @@ export default function PdfViewer({
     }
 
     const timer = window.setTimeout(() => {
-      void saveRecentProgress(fileName, pageNumber, scale).then(() => {
+      void saveRecentProgress(fileName, pageNumber, scale, numPagesRef.current).then(() => {
         onRecentChangeRef.current?.({
           fileName,
           pageNumber,
@@ -1085,7 +1097,7 @@ export default function PdfViewer({
     if (viewModeRef.current === "continuous") {
       pendingScrollPageRef.current = pageNumberRef.current;
     }
-    void saveRecentProgress(fileName, pageNumber, next).then(() => {
+    void saveRecentProgress(fileName, pageNumber, next, numPagesRef.current).then(() => {
       onRecentChangeRef.current?.({
         fileName,
         pageNumber,
