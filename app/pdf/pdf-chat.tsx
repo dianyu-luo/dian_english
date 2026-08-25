@@ -32,6 +32,15 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function welcomeMessage(): ChatMessage {
+  return {
+    id: "welcome",
+    role: "assistant",
+    content: "选中 PDF 文本提问，或上传 / 粘贴图片。公式会识别成 LaTeX。",
+    createdAt: Date.now(),
+  };
+}
+
 async function readChatStream(
   res: Response,
   onEvent: (event: SseEvent) => void,
@@ -75,19 +84,13 @@ async function readChatStream(
 
 export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps) {
   const router = useRouter();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "选中 PDF 文本提问，或上传 / 粘贴图片。公式会识别成 LaTeX。",
-      createdAt: Date.now(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [welcomeMessage()]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<ChatImage | null>(null);
   const [attaching, setAttaching] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasChatHistory = messages.some((m) => m.id !== "welcome");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -321,6 +324,30 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
     void send(`${prompt}：${selected.word}`);
   };
 
+  const clearChat = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    stickPinRef.current = false;
+    pinnedUserIdRef.current = null;
+    setSending(false);
+    setError(null);
+    setMessages([welcomeMessage()]);
+  };
+
+  const deleteMessage = (id: string) => {
+    if (id === "welcome") return;
+    const target = messages.find((m) => m.id === id);
+    if (target?.streaming) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      stickPinRef.current = false;
+      pinnedUserIdRef.current = null;
+      setSending(false);
+    }
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    setError(null);
+  };
+
   return (
     <div
       className="flex h-full min-h-0 flex-col bg-[#faf8f4]"
@@ -330,10 +357,23 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
     >
       {selected ? (
         <div className="shrink-0 border-b border-[#e7e2d9] bg-[#f6f4ef] px-4 py-2.5">
-          <p className="text-[11px] tracking-wide text-[#a8a29e] uppercase">
-            {selected.type === "sentence" ? "选中句子" : "选中单词"}
-          </p>
-          <p className="mt-1 line-clamp-3 text-sm leading-5 text-[#1c1917]">{selected.word}</p>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] tracking-wide text-[#a8a29e] uppercase">
+                {selected.type === "sentence" ? "选中句子" : "选中单词"}
+              </p>
+              <p className="mt-1 line-clamp-3 text-sm leading-5 text-[#1c1917]">{selected.word}</p>
+            </div>
+            {hasChatHistory ? (
+              <button
+                type="button"
+                onClick={clearChat}
+                className="shrink-0 border border-[#d6d3d1] bg-white px-2 py-0.5 text-xs text-[#57534e] hover:bg-[#f0ebe3]"
+              >
+                清空
+              </button>
+            ) : null}
+          </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {(["解释含义", "用法例句", "同义词"] as const).map((label) => (
               <button
@@ -359,12 +399,21 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
           </div>
         </div>
       ) : (
-        <div className="shrink-0 border-b border-[#e7e2d9] px-4 py-2.5">
-          <p className="text-xs text-[#78716c]">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#e7e2d9] px-4 py-2.5">
+          <p className="min-w-0 truncate text-xs text-[#78716c]">
             {fileName
               ? `${fileName}${pageNumber != null ? ` · 第 ${pageNumber} 页` : ""}`
               : "选中文本后可快捷提问"}
           </p>
+          {hasChatHistory ? (
+            <button
+              type="button"
+              onClick={clearChat}
+              className="shrink-0 border border-[#d6d3d1] bg-white px-2 py-0.5 text-xs text-[#57534e] hover:bg-[#f0ebe3]"
+            >
+              清空
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -396,8 +445,18 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
                   }
                 : undefined
             }
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`group flex items-start gap-1.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
+            {m.id !== "welcome" && m.role === "user" ? (
+              <button
+                type="button"
+                onClick={() => deleteMessage(m.id)}
+                className="mt-1 shrink-0 border border-transparent px-1.5 py-0.5 text-[11px] text-[#a8a29e] opacity-0 transition-opacity hover:border-[#d6d3d1] hover:bg-white hover:text-[#57534e] group-hover:opacity-100 focus:opacity-100"
+                aria-label="删除这条消息"
+              >
+                删除
+              </button>
+            ) : null}
             <div
               className={`max-w-[92%] px-3 py-2 text-sm ${
                 m.role === "user"
@@ -423,6 +482,16 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
                 </>
               )}
             </div>
+            {m.id !== "welcome" && m.role === "assistant" ? (
+              <button
+                type="button"
+                onClick={() => deleteMessage(m.id)}
+                className="mt-1 shrink-0 border border-transparent px-1.5 py-0.5 text-[11px] text-[#a8a29e] opacity-0 transition-opacity hover:border-[#d6d3d1] hover:bg-white hover:text-[#57534e] group-hover:opacity-100 focus:opacity-100"
+                aria-label="删除这条消息"
+              >
+                删除
+              </button>
+            ) : null}
           </div>
         ))}
         {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
