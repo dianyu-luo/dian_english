@@ -30,6 +30,8 @@ export const pdfWordMarks = sqliteTable("pdf_word_marks", {
   contextBefore: text("context_before").notNull().default(""),
   contextAfter: text("context_after").notNull().default(""),
   locator: text("locator").notNull(),
+  /** 查询该 mark 的次数 */
+  queryCount: integer("query_count").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

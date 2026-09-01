@@ -114,6 +114,7 @@ export async function POST(request: Request) {
         contextBefore: body.contextBefore ?? existing.contextBefore,
         contextAfter: body.contextAfter ?? existing.contextAfter,
         locator,
+        queryCount: existing.queryCount + 1,
         updatedAt: now,
       })
       .where(eq(pdfWordMarks.id, existing.id))
@@ -136,6 +137,7 @@ export async function POST(request: Request) {
       contextBefore: body.contextBefore ?? "",
       contextAfter: body.contextAfter ?? "",
       locator,
+      queryCount: 1,
       createdAt: now,
       updatedAt: now,
     })

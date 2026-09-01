@@ -115,6 +115,7 @@ type PdfWordMark = {
   contextBefore: string;
   contextAfter: string;
   locator: string;
+  queryCount: number;
 };
 
 type PdfAnnotation = {
