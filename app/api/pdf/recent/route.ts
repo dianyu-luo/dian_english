@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { pdfRecentReads } from "@/lib/db/schema";
+import { pdfAnnotations, pdfPins, pdfRecentReads, pdfWordMarks } from "@/lib/db/schema";
 
 const pdfDir = path.join(process.cwd(), "data", "pdfs");
 
@@ -13,6 +13,10 @@ const SCALE_MAX = 2.5;
 
 function fileUrl(storageKey: string) {
   return `/api/pdf/file/${encodeURIComponent(storageKey)}`;
+}
+
+function isSafeStorageKey(key: string) {
+  return Boolean(key) && !key.includes("..") && !key.includes("/") && !key.includes("\\");
 }
 
 function clampScale(value: number) {
@@ -209,4 +213,39 @@ export async function POST(request: Request) {
     .returning();
 
   return NextResponse.json({ ok: true, item: serialize(row) });
+}
+
+/** 删除最近打开的文件：记录、本地 PDF，以及该文件的笔记 / 标记 / 批注 */
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const fileName = searchParams.get("fileName")?.trim();
+
+  if (!fileName) {
+    return NextResponse.json({ ok: false, error: "缺少 fileName" }, { status: 400 });
+  }
+
+  const [existing] = await db
+    .select()
+    .from(pdfRecentReads)
+    .where(eq(pdfRecentReads.fileName, fileName))
+    .limit(1);
+
+  if (!existing) {
+    return NextResponse.json({ ok: false, error: "记录不存在" }, { status: 404 });
+  }
+
+  await db.delete(pdfWordMarks).where(eq(pdfWordMarks.fileName, fileName));
+  await db.delete(pdfPins).where(eq(pdfPins.fileName, fileName));
+  await db.delete(pdfAnnotations).where(eq(pdfAnnotations.fileName, fileName));
+  await db.delete(pdfRecentReads).where(eq(pdfRecentReads.fileName, fileName));
+
+  if (isSafeStorageKey(existing.storageKey)) {
+    try {
+      await unlink(path.join(pdfDir, existing.storageKey));
+    } catch {
+      // 磁盘文件缺失时仍视为删除成功
+    }
+  }
+
+  return NextResponse.json({ ok: true, fileName });
 }

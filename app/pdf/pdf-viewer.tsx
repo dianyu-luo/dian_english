@@ -480,6 +480,16 @@ async function fetchRecentList(limit = 20): Promise<RecentItem[]> {
   return data.items as RecentItem[];
 }
 
+async function deleteRecentByFileName(fileName: string): Promise<void> {
+  const res = await fetch(`/api/pdf/recent?fileName=${encodeURIComponent(fileName)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    throw new Error(data.error ?? "删除失败");
+  }
+}
+
 function formatRecentTime(value: string | number | Date | undefined): string {
   if (value == null) return "";
   const d = value instanceof Date ? value : new Date(value);
@@ -529,6 +539,7 @@ export default function PdfViewer({
   const [recentMenuOpen, setRecentMenuOpen] = useState(false);
   const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
+  const [recentDeleting, setRecentDeleting] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [highlight, setHighlight] = useState<{
     word: string;
@@ -981,6 +992,43 @@ export default function PdfViewer({
       return next;
     });
   }, []);
+
+  const closeCurrentFile = useCallback(() => {
+    skipPersistRef.current = true;
+    setFile(null);
+    setFileName("");
+    setPageNumber(1);
+    setNumPages(0);
+    setScale(1);
+    setHighlight(null);
+    setError(null);
+    onRecentChangeRef.current?.(null);
+    onWordMarksChangeRef.current?.();
+  }, []);
+
+  const deleteRecentItem = useCallback(
+    async (item: RecentItem) => {
+      const ok = window.confirm(
+        `确定删除「${item.fileName}」吗？相关笔记和标记也会一并删除。`,
+      );
+      if (!ok) return;
+
+      setRecentDeleting(item.fileName);
+      try {
+        await deleteRecentByFileName(item.fileName);
+        setRecentItems((prev) => prev.filter((row) => row.fileName !== item.fileName));
+        if (item.fileName === fileNameRef.current) {
+          closeCurrentFile();
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "删除失败");
+        setRecentMenuOpen(false);
+      } finally {
+        setRecentDeleting(null);
+      }
+    },
+    [closeCurrentFile],
+  );
 
   const onDocumentLoadSuccess = useCallback(({ numPages: total }: { numPages: number }) => {
     setNumPages(total);
@@ -2264,24 +2312,41 @@ export default function PdfViewer({
                 recentItems.map((item) => {
                   const active = item.fileName === fileName;
                   const time = formatRecentTime(item.updatedAt);
+                  const deleting = recentDeleting === item.fileName;
                   return (
-                    <button
+                    <div
                       key={item.fileName}
-                      type="button"
                       role="menuitem"
-                      onClick={() => openRecentItem(item)}
-                      className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-[#f0ebe3] ${
+                      className={`flex items-stretch hover:bg-[#f0ebe3] ${
                         active ? "bg-[#efebe4]" : ""
                       }`}
                     >
-                      <span className="truncate text-sm font-medium text-[#1c1917]">
-                        {item.fileName}
-                      </span>
-                      <span className="text-xs text-[#a8a29e]">
-                        第 {item.pageNumber} 页
-                        {time ? ` · ${time}` : ""}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => openRecentItem(item)}
+                        disabled={Boolean(recentDeleting)}
+                        className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2 text-left disabled:opacity-50"
+                      >
+                        <span className="truncate text-sm font-medium text-[#1c1917]">
+                          {item.fileName}
+                        </span>
+                        <span className="text-xs text-[#a8a29e]">
+                          第 {item.pageNumber} 页
+                          {time ? ` · ${time}` : ""}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        title="删除"
+                        aria-label={`删除 ${item.fileName}`}
+                        disabled={Boolean(recentDeleting)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => void deleteRecentItem(item)}
+                        className="shrink-0 px-2.5 text-sm text-[#a8a29e] hover:text-[#1c1917] disabled:opacity-50"
+                      >
+                        {deleting ? "…" : "×"}
+                      </button>
+                    </div>
                   );
                 })
               )}
