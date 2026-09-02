@@ -45,28 +45,117 @@ function pinEditorTheme(kind: PinKind) {
   switch (kind) {
     case "question":
       return {
-        badge: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]",
-        accent: "border-t-[#d97706]",
-        focus: "focus:border-[#d97706]",
+        bar: "bg-[#d97706]",
+        badge: "bg-[#fffbeb] text-[#b45309] ring-1 ring-inset ring-[#fcd34d]/80",
+        icon: "text-[#d97706]",
+        focus:
+          "focus:border-[#d97706]/70 focus:ring-2 focus:ring-[#d97706]/15",
+        save: "bg-[#b45309] hover:bg-[#92400e]",
       };
     case "note":
       return {
-        badge: "border-[#cbd5e1] bg-[#f1f5f9] text-[#475569]",
-        accent: "border-t-[#64748b]",
-        focus: "focus:border-[#64748b]",
+        bar: "bg-[#64748b]",
+        badge: "bg-[#f1f5f9] text-[#475569] ring-1 ring-inset ring-[#cbd5e1]/90",
+        icon: "text-[#64748b]",
+        focus:
+          "focus:border-[#64748b]/70 focus:ring-2 focus:ring-[#64748b]/15",
+        save: "bg-[#475569] hover:bg-[#334155]",
       };
     case "bookmark":
       return {
-        badge: "border-[#fdba74] bg-[#fff7ed] text-[#c2410c]",
-        accent: "border-t-[#ea580c]",
-        focus: "focus:border-[#ea580c]",
+        bar: "bg-[#ea580c]",
+        badge: "bg-[#fff7ed] text-[#c2410c] ring-1 ring-inset ring-[#fdba74]/80",
+        icon: "text-[#ea580c]",
+        focus:
+          "focus:border-[#ea580c]/70 focus:ring-2 focus:ring-[#ea580c]/15",
+        save: "bg-[#c2410c] hover:bg-[#9a3412]",
       };
     case "todo":
       return {
-        badge: "border-[#5eead4] bg-[#f0fdfa] text-[#0f766e]",
-        accent: "border-t-[#0f766e]",
-        focus: "focus:border-[#0f766e]",
+        bar: "bg-[#0f766e]",
+        badge: "bg-[#f0fdfa] text-[#0f766e] ring-1 ring-inset ring-[#5eead4]/80",
+        icon: "text-[#0f766e]",
+        focus:
+          "focus:border-[#0f766e]/70 focus:ring-2 focus:ring-[#0f766e]/15",
+        save: "bg-[#0f766e] hover:bg-[#115e59]",
       };
+  }
+}
+
+function PinKindIcon({ kind }: { kind: PinKind }) {
+  const common = { width: 13, height: 13, viewBox: "0 0 16 16", fill: "none", "aria-hidden": true as const };
+  switch (kind) {
+    case "question":
+      return (
+        <svg {...common}>
+          <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.25" fill="currentColor" fillOpacity="0.12" />
+          <path
+            d="M6.35 6.2c.2-.95.95-1.55 1.9-1.55 1.05 0 1.85.65 1.85 1.6 0 .75-.4 1.2-1.05 1.55-.55.3-.8.55-.8 1.05v.25"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          />
+          <circle cx="8" cy="11.35" r="0.7" fill="currentColor" />
+        </svg>
+      );
+    case "note":
+      return (
+        <svg {...common}>
+          <path
+            d="M3 1.75h7.25L13 4.5v9.75H3V1.75Z"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinejoin="round"
+            fill="currentColor"
+            fillOpacity="0.12"
+          />
+          <path d="M10.25 1.75V4.5H13" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+          <path d="M5.25 7h5.5M5.25 9.5h5.5M5.25 12h3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      );
+    case "bookmark":
+      return (
+        <svg {...common}>
+          <path
+            d="M4 2.25h8v11.5L8 11.25 4 13.75V2.25Z"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinejoin="round"
+            fill="currentColor"
+            fillOpacity="0.18"
+          />
+        </svg>
+      );
+    case "todo":
+      return (
+        <svg {...common}>
+          <rect
+            x="2.5"
+            y="2.5"
+            width="11"
+            height="11"
+            rx="1.5"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            fill="currentColor"
+            fillOpacity="0.12"
+          />
+          <path d="M5.2 8.1 7.1 10l3.7-4.2" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+  }
+}
+
+function pinPlaceholder(kind: PinKind) {
+  switch (kind) {
+    case "question":
+      return "写下你的问题…";
+    case "todo":
+      return "记下待办事项…";
+    case "bookmark":
+      return "给书签加一句备注…";
+    case "note":
+      return "随手记一点想法…";
   }
 }
 
@@ -280,36 +369,47 @@ export function PinEditorPanel({
   onExpand,
 }: PinEditorPanelProps) {
   const theme = pinEditorTheme(kind);
+  const flipLeft = pin.rectLeft + pin.rectWidth > 0.68;
+  const dirty = draft !== (pin.content ?? "");
 
   return (
     <div
       ref={editorRef}
-      className={`absolute z-40 w-72 overflow-hidden border border-[#e7e2d9] border-t-2 bg-[#faf8f4] shadow-[0_10px_28px_rgba(28,25,23,0.12)] ${theme.accent}`}
+      className="absolute z-40 w-[18.5rem] overflow-hidden rounded-lg border border-[#e4dfd6] bg-[#faf8f4] shadow-[0_12px_36px_rgba(28,25,23,0.14),0_2px_6px_rgba(28,25,23,0.06)]"
       style={{
-        left: `${Math.min((pin.rectLeft + pin.rectWidth) * 100, 68)}%`,
+        left: flipLeft
+          ? `${pin.rectLeft * 100}%`
+          : `${Math.min((pin.rectLeft + pin.rectWidth) * 100, 68)}%`,
         top: `${pin.rectTop * 100}%`,
+        transform: flipLeft ? "translateX(calc(-100% - 8px))" : "translateX(8px)",
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-2 border-b border-[#e7e2d9] bg-[#f6f4ef] px-3 py-2">
+      <div className={`h-0.5 w-full ${theme.bar}`} aria-hidden />
+      <div className="flex items-center gap-2 border-b border-[#ebe6dc] bg-[#f7f4ee]/90 px-3 py-2 backdrop-blur-[2px]">
         <span
-          className={`inline-flex items-center border px-1.5 py-0.5 text-[11px] font-medium ${theme.badge}`}
+          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium tracking-wide ${theme.badge}`}
         >
+          <span className={theme.icon}>
+            <PinKindIcon kind={kind} />
+          </span>
           {pinKindLabel(kind)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[11px] text-[#a8a29e]">
+        <span className="min-w-0 flex-1 truncate text-[11px] tabular-nums text-[#a8a29e]">
           第 {pin.pageNumber} 页
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="关闭"
-          className="flex h-5 w-5 shrink-0 items-center justify-center text-[#a8a29e] hover:bg-[#efebe4] hover:text-[#1c1917]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#a8a29e] transition-colors hover:bg-[#efebe4] hover:text-[#1c1917]"
         >
-          ×
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
-      <div className="px-3 pt-2.5">
+      <div className="px-3 pt-3">
         <textarea
           value={draft}
           onChange={(e) => onDraftChange(e.target.value)}
@@ -320,41 +420,57 @@ export function PinEditorPanel({
             }
           }}
           rows={4}
-          placeholder={
-            kind === "question" ? "输入问题…" : kind === "todo" ? "输入待办…" : "输入笔记…"
-          }
-          className={`min-h-[5.5rem] w-full resize-none border border-[#e7e2d9] bg-white px-2.5 py-2 text-sm leading-relaxed text-[#1c1917] outline-none placeholder:text-[#a8a29e] ${theme.focus}`}
+          placeholder={pinPlaceholder(kind)}
+          className={`min-h-[6rem] w-full resize-none rounded-md border border-[#e7e2d9] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#1c1917] shadow-[inset_0_1px_2px_rgba(28,25,23,0.03)] outline-none transition-[border-color,box-shadow] placeholder:text-[#c4bfb8] ${theme.focus}`}
           autoFocus
         />
       </div>
-      <div className="flex items-center gap-1 px-2.5 py-2">
+      <div className="flex items-center gap-1 px-2.5 pt-2 pb-2.5">
         <button
           type="button"
           disabled={saving}
           onClick={onDelete}
-          className="px-2 py-1 text-xs text-[#b91c1c] hover:bg-[#fee2e2] disabled:opacity-50"
+          className="rounded-md px-2 py-1.5 text-xs text-[#b91c1c]/80 transition-colors hover:bg-[#fef2f2] hover:text-[#b91c1c] disabled:opacity-50"
         >
           删除
         </button>
-        <span className="ml-auto text-[10px] text-[#c4bfb8]" title="Ctrl+Enter">
-          ⌃↵
-        </span>
-        <button
-          type="button"
-          onClick={onExpand}
-          className="px-2 py-1 text-xs text-[#78716c] hover:bg-[#efebe4] hover:text-[#1c1917]"
-        >
-          展开
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          title="Ctrl+Enter"
-          onClick={onSave}
-          className="border border-[#d6d3d1] bg-[#1c1917] px-2.5 py-1 text-xs font-medium text-[#faf8f4] hover:bg-[#292524] disabled:opacity-50"
-        >
-          {saving ? "保存中…" : "保存"}
-        </button>
+        <div className="ml-auto flex items-center gap-1">
+          {dirty ? (
+            <span className="mr-1 h-1.5 w-1.5 rounded-full bg-[#d97706]/80" title="未保存" aria-label="未保存" />
+          ) : null}
+          <kbd
+            className="mr-0.5 hidden rounded border border-[#e7e2d9] bg-[#f3efe8] px-1 py-0.5 font-sans text-[10px] text-[#a8a29e] sm:inline"
+            title="Ctrl+Enter 保存"
+          >
+            ⌃↵
+          </kbd>
+          <button
+            type="button"
+            onClick={onExpand}
+            title="在 Markdown 编辑器中打开"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-[#78716c] transition-colors hover:bg-[#efebe4] hover:text-[#1c1917]"
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+              <path
+                d="M4.5 2H2.5A.5.5 0 0 0 2 2.5v7a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5V7.5M7 2h3v3M5.5 6.5 10 2"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            展开
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            title="Ctrl+Enter"
+            onClick={onSave}
+            className={`rounded-md px-2.5 py-1.5 text-xs font-medium text-[#faf8f4] shadow-sm transition-colors disabled:opacity-50 ${theme.save}`}
+          >
+            {saving ? "保存中…" : "保存"}
+          </button>
+        </div>
       </div>
     </div>
   );
