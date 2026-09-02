@@ -259,8 +259,11 @@ export default function PdfPageClient({
   }, [persistSideWidth]);
 
   const loadMarks = useCallback(async (fileName?: string) => {
-    const qs = fileName ? `?fileName=${encodeURIComponent(fileName)}` : "";
-    const res = await fetch(`/api/pdf/words${qs}`);
+    const res = await fetch("/api/pdf/words/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fileName ? { fileName } : {}),
+    });
     const data = await res.json();
     if (res.ok && data.ok) {
       setMarks(data.items as SavedMark[]);

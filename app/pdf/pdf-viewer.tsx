@@ -1295,7 +1295,11 @@ export default function PdfViewer({
       return;
     }
     try {
-      const res = await fetch(`/api/pdf/words?fileName=${encodeURIComponent(name)}`);
+      const res = await fetch("/api/pdf/words/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: name }),
+      });
       const data = await res.json();
       if (res.ok && data.ok) {
         setWordMarks(data.items as PdfWordMark[]);
