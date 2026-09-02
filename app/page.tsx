@@ -3,10 +3,18 @@ import Link from "next/link";
 export default function Home() {
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
-      <header className="border-b border-[#e7e2d9] bg-[#faf8f4]/px-6 py-4">
+      <header className="border-b border-[#e7e2d9] bg-[#faf8f4] px-6 py-4">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
           <p className="text-lg font-semibold tracking-tight">NE</p>
-          <p className="text-sm text-[#78716c]">Dashboard</p>
+          <div className="flex items-center gap-4">
+            <p className="text-sm text-[#78716c]">Dashboard</p>
+            <button
+              type="button"
+              className="border border-[#d6d3d1] bg-[#faf8f4] px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3]"
+            >
+              设置
+            </button>
+          </div>
         </div>
       </header>
 
