@@ -97,12 +97,9 @@ export default function SettingsPage() {
         </section>
 
         <SettingSection
-          title="账户与 API"
-          description="单用户本地应用，无登录体系。AI 密钥通过服务端环境变量配置。"
+          title="API"
+          description="AI 密钥通过服务端环境变量配置。"
         >
-          <SettingRow label="账户" hint="尚未实现用户系统">
-            <p className="text-sm text-[#78716c]">本地模式，无需登录</p>
-          </SettingRow>
           <SettingRow label="DeepSeek API" hint="文本对话 · DEEPSEEK_API_KEY">
             <StatusBadge ok label="通过 .env.local 配置" />
           </SettingRow>
@@ -337,14 +334,8 @@ export default function SettingsPage() {
 
         <SettingSection
           title="数据管理"
-          description="本地 SQLite 与 PDF 文件存储，删除操作在 PDF 工具栏「最近打开」中可用。"
+          description="删除操作在 PDF 工具栏「最近打开」中可用。"
         >
-          <SettingRow label="数据库" hint="Drizzle · libsql">
-            <code className="text-sm text-[#57534e]">data/app.db</code>
-          </SettingRow>
-          <SettingRow label="PDF 文件目录">
-            <code className="text-sm text-[#57534e]">data/pdfs/</code>
-          </SettingRow>
           <SettingRow label="最近打开的文件" hint="可在 PDF 阅读器工具栏管理">
             <Link
               href="/pdf"
@@ -377,6 +368,13 @@ export default function SettingsPage() {
             </button>
           </SettingRow>
         </SettingSection>
+
+        <div className="mt-10 flex items-center justify-end gap-3 border-t border-[#d6d3d1] pt-8">
+          <p className="mr-auto text-sm text-[#a8a29e]">当前为展示模式，保存不会生效</p>
+          <button type="button" disabled className={`${btnClass} px-4 font-medium text-[#1c1917]`}>
+            保存修改内容
+          </button>
+        </div>
       </main>
     </div>
   );
