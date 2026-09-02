@@ -73,8 +73,9 @@ export default async function ActivityPage() {
             <p className="text-sm leading-6 text-[#78716c]">暂无最近打开的 PDF。</p>
           ) : (
             <div className="border-y border-[#e7e2d9]">
-              <div className="hidden grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] gap-4 border-b border-[#e7e2d9] py-2 text-xs text-[#78716c] sm:grid">
+              <div className="hidden grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_10.5rem] gap-4 border-b border-[#e7e2d9] py-2 text-xs text-[#78716c] sm:grid">
                 <span>文件</span>
+                <span className="text-right">今日浏览</span>
                 <span className="text-right">浏览时长</span>
                 <span className="text-right">最近进度</span>
               </div>
@@ -86,10 +87,13 @@ export default async function ActivityPage() {
                     <li key={item.id}>
                       <Link
                         href={href}
-                        className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] sm:items-center sm:gap-4"
+                        className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_10.5rem] sm:items-center sm:gap-4"
                       >
                         <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]">
                           {item.fileName}
+                        </span>
+                        <span className="whitespace-nowrap text-xs tabular-nums text-[#57534e] sm:text-right">
+                          {formatDurationMs(item.todayDwellMs)}
                         </span>
                         <span className="whitespace-nowrap text-xs tabular-nums text-[#57534e] sm:text-right">
                           {formatDurationMs(item.dwellMs)}
