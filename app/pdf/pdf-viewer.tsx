@@ -14,6 +14,15 @@ import {
 } from "./get-selected-word";
 import { parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "./markdown";
+import {
+  PIN_KINDS,
+  PINS_API,
+  PinEditorPanel,
+  pinKindLabel,
+  usePinEditor,
+  type PdfPin,
+  type PinKind,
+} from "./pin-editor";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -57,35 +66,6 @@ type PdfViewerProps = {
   fillHeight?: boolean;
   /** 笔记页盖住阅读器时暂停，返回后刷新标记 */
   paused?: boolean;
-};
-
-type PinKind = "question" | "note" | "bookmark" | "todo";
-
-const PIN_KINDS: readonly PinKind[] = ["note", "question", "bookmark", "todo"];
-
-function pinKindLabel(kind: PinKind): string {
-  switch (kind) {
-    case "question":
-      return "问题";
-    case "note":
-      return "笔记";
-    case "bookmark":
-      return "书签";
-    case "todo":
-      return "待办";
-  }
-}
-
-type PdfPin = {
-  id: number;
-  fileName: string;
-  type: PinKind;
-  pageNumber: number;
-  rectLeft: number;
-  rectTop: number;
-  rectWidth: number;
-  rectHeight: number;
-  content: string;
 };
 
 type ContextMenuState = {
@@ -143,7 +123,6 @@ type NormPoint = { x: number; y: number };
 
 const QUESTION_MARKER_PX = 28;
 const PIN_DOUBLE_CLICK_MS = 400;
-const PINS_API = "/api/pdf/pins";
 const ARROW_COLOR = "#dc2626";
 const ARROW_STROKE_WIDTH = 2.5;
 const MIN_ARROW_DRAG_PX = 6;
@@ -556,9 +535,6 @@ export default function PdfViewer({
   const [pinTypeSubmenuOpen, setPinTypeSubmenuOpen] = useState(false);
   const [pins, setPins] = useState<PdfPin[]>([]);
   const [wordMarks, setWordMarks] = useState<PdfWordMark[]>([]);
-  const [activePin, setActivePin] = useState<{ kind: PinKind; id: number } | null>(null);
-  const [pinDraft, setPinDraft] = useState("");
-  const [pinSaving, setPinSaving] = useState(false);
   const [activeWordMarkId, setActiveWordMarkId] = useState<number | null>(null);
   const [wordMarkDraft, setWordMarkDraft] = useState("");
   const [wordMarkSaving, setWordMarkSaving] = useState(false);
@@ -585,8 +561,8 @@ export default function PdfViewer({
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const selectionMenuRef = useRef<HTMLDivElement>(null);
   const markerMenuRef = useRef<HTMLDivElement>(null);
-  const pinEditorRef = useRef<HTMLDivElement>(null);
   const wordMarkEditorRef = useRef<HTMLDivElement>(null);
+  const closePinEditorRef = useRef<() => void>(() => {});
   const arrowStrokeRef = useRef<{
     x1: number;
     y1: number;
@@ -888,8 +864,7 @@ export default function PdfViewer({
     setContextMenu(null);
     setAnnotateSubmenuOpen(false);
     setMarkerMenu(null);
-    setActivePin(null);
-    setPinDraft("");
+    closePinEditorRef.current();
     setActiveWordMarkId(null);
     setWordMarkDraft("");
     setSelectionMenu({ x, y, info });
@@ -1210,15 +1185,45 @@ export default function PdfViewer({
   }, []);
   const closeSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
-  const closePinEditor = useCallback(() => {
-    setActivePin(null);
-    setPinDraft("");
-  }, []);
-
   const closeWordMarkEditor = useCallback(() => {
     setActiveWordMarkId(null);
     setWordMarkDraft("");
   }, []);
+
+  const updatePins = useCallback((updater: (prev: PdfPin[]) => PdfPin[]) => {
+    setPins(updater);
+  }, []);
+
+  const onBeforeOpenPinEditor = useCallback(() => {
+    closeWordMarkEditor();
+    closeSelectionMenu();
+  }, [closeWordMarkEditor, closeSelectionMenu]);
+
+  const onPinEditorError = useCallback((message: string) => {
+    setError(message);
+  }, []);
+
+  const {
+    activePin,
+    activePinItem,
+    pinDraft,
+    setPinDraft,
+    pinSaving,
+    pinEditorRef,
+    closePinEditor,
+    openPinEditor,
+    openPinMarkdownEditor,
+    savePinContent,
+    deletePin,
+    retargetActivePin,
+  } = usePinEditor({
+    pins,
+    updatePins,
+    onError: onPinEditorError,
+    onBeforeOpen: onBeforeOpenPinEditor,
+    onBeforeOpenMarkdown: closeMarkerMenu,
+  });
+  closePinEditorRef.current = closePinEditor;
 
   const clearHoverPinTimer = useCallback(() => {
     if (hoverPinTimerRef.current != null) {
@@ -1252,10 +1257,6 @@ export default function PdfViewer({
   }, [clearHoverPinTimer]);
 
   useEffect(() => () => clearHoverPinTimer(), [clearHoverPinTimer]);
-
-  const updatePins = useCallback((updater: (prev: PdfPin[]) => PdfPin[]) => {
-    setPins(updater);
-  }, []);
 
   const loadPins = useCallback(async (name: string) => {
     if (!name) {
@@ -1647,37 +1648,13 @@ export default function PdfViewer({
         const item = data.item as PdfPin;
         updatePins((prev) => [item, ...prev.filter((p) => p.id !== item.id)]);
         if (kind !== "bookmark") {
-          setActivePin({ kind, id: item.id });
-          setPinDraft(item.content ?? "");
+          openPinEditor(kind, item);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : `创建${label}失败`);
       }
     },
-    [contextMenu, fileName, closeContextMenu, closeWordMarkEditor, closeSelectionMenu, updatePins],
-  );
-
-  const openPinEditor = useCallback((kind: PinKind, pin: PdfPin) => {
-    closeWordMarkEditor();
-    closeSelectionMenu();
-    setActivePin({ kind, id: pin.id });
-    setPinDraft(pin.content ?? "");
-  }, [closeWordMarkEditor, closeSelectionMenu]);
-
-  const openPinMarkdownEditor = useCallback(
-    (kind: PinKind, pin: PdfPin, body?: string) => {
-      const title = pinKindLabel(kind);
-      const href = noteEditorHref({
-        kind,
-        id: pin.id,
-        word: title,
-        body: body ?? pin.content ?? "",
-      });
-      closePinEditor();
-      closeMarkerMenu();
-      router.push(href);
-    },
-    [closePinEditor, closeMarkerMenu, router],
+    [contextMenu, fileName, closeContextMenu, closeWordMarkEditor, closeSelectionMenu, updatePins, openPinEditor],
   );
 
   const openWordMarkEditor = useCallback(
@@ -1781,33 +1758,6 @@ export default function PdfViewer({
     [closeWordMarkEditor],
   );
 
-  const savePinContent = useCallback(async () => {
-    if (!activePin) return;
-    setPinSaving(true);
-    try {
-      const res = await fetch(PINS_API, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: activePin.id,
-          type: activePin.kind,
-          content: pinDraft,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error ?? "保存失败");
-      }
-      const item = data.item as PdfPin;
-      updatePins((prev) => prev.map((p) => (p.id === item.id ? item : p)));
-      closePinEditor();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
-    } finally {
-      setPinSaving(false);
-    }
-  }, [activePin, pinDraft, closePinEditor, updatePins]);
-
   const persistPinRect = useCallback(
     async (kind: PinKind, pin: PdfPin) => {
       try {
@@ -1840,28 +1790,6 @@ export default function PdfViewer({
     [fileName, loadPins, updatePins],
   );
 
-  const deletePin = useCallback(
-    async (kind: PinKind, pin: PdfPin) => {
-      const preview = pin.content.trim() ? `\n「${pin.content.trim().slice(0, 40)}」` : "";
-      const confirmMsg = `确定删除这个${pinKindLabel(kind)}吗？${preview}`;
-      const ok = window.confirm(confirmMsg);
-      if (!ok) return;
-
-      closePinEditor();
-      try {
-        const res = await fetch(`${PINS_API}?id=${pin.id}`, { method: "DELETE" });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error ?? "删除失败");
-        }
-        updatePins((prev) => prev.filter((row) => row.id !== pin.id));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "删除失败");
-      }
-    },
-    [closePinEditor, updatePins],
-  );
-
   const changePinType = useCallback(
     async (pin: PdfPin, nextType: PinKind) => {
       if (pin.type === nextType) {
@@ -1881,9 +1809,7 @@ export default function PdfViewer({
         }
         const item = data.item as PdfPin;
         updatePins((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-        setActivePin((prev) =>
-          prev?.id === item.id ? { kind: nextType, id: item.id } : prev,
-        );
+        retargetActivePin(item.id, nextType);
         setHoveredPin((prev) =>
           prev?.id === item.id ? { kind: nextType, id: item.id } : prev,
         );
@@ -1892,7 +1818,7 @@ export default function PdfViewer({
         if (fileName) void loadPins(fileName);
       }
     },
-    [closeMarkerMenu, updatePins, fileName, loadPins],
+    [closeMarkerMenu, updatePins, fileName, loadPins, retargetActivePin],
   );
 
   const onPinPointerDown = useCallback(
@@ -2088,27 +2014,6 @@ export default function PdfViewer({
   }, [markerMenu, closeMarkerMenu]);
 
   useEffect(() => {
-    if (!activePin) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node;
-      if (pinEditorRef.current?.contains(target)) return;
-      if ((target as Element).closest?.("[data-question-marker],[data-note-marker],[data-bookmark-marker],[data-todo-marker]")) return;
-      closePinEditor();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closePinEditor();
-    };
-
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [activePin, closePinEditor]);
-
-  useEffect(() => {
     if (activeWordMarkId == null) return;
 
     const onPointerDown = (e: PointerEvent) => {
@@ -2272,11 +2177,6 @@ export default function PdfViewer({
     if (!markerMenu || typeof window === "undefined") return false;
     return markerMenu.x + 140 + 120 > window.innerWidth - 8;
   }, [markerMenu]);
-
-  const activePinItem = useMemo(() => {
-    if (!activePin) return null;
-    return pins.find((p) => p.id === activePin.id && p.type === activePin.kind) ?? null;
-  }, [activePin, pins]);
 
   const hoveredPinItem = useMemo(() => {
     if (!hoveredPin || draggingPin || activePin || markerMenu) return null;
@@ -2932,81 +2832,20 @@ export default function PdfViewer({
                   />
                 ) : null}
                 {activePin && activePinItem && activePinItem.pageNumber === sheetPage ? (
-                  <div
-                    ref={pinEditorRef}
-                    className="absolute z-40 w-56 border border-[#d6d3d1] bg-[#faf8f4] p-2 shadow-md"
-                    style={{
-                      left: `${Math.min((activePinItem.rectLeft + activePinItem.rectWidth) * 100, 72)}%`,
-                      top: `${activePinItem.rectTop * 100}%`,
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    <p className="mb-1 text-xs text-[#78716c]">
-                      {activePinItem.fileName} · 第 {activePinItem.pageNumber} 页
-                    </p>
-                    <textarea
-                      value={pinDraft}
-                      onChange={(e) => setPinDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                          e.preventDefault();
-                          if (!pinSaving) void savePinContent();
-                        }
-                      }}
-                      rows={3}
-                      placeholder={
-                        activePin.kind === "question"
-                          ? "输入问题…"
-                          : activePin.kind === "todo"
-                            ? "输入待办…"
-                            : "输入笔记…"
-                      }
-                      className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
-                      autoFocus
-                    />
-                    <div className="mt-1.5 flex items-center gap-1">
-                      <button
-                        type="button"
-                        disabled={pinSaving}
-                        onClick={() => {
-                          if (!activePin || !activePinItem) return;
-                          void deletePin(activePin.kind, activePinItem);
-                        }}
-                        className="px-2 py-1 text-xs text-[#b91c1c] hover:bg-[#fee2e2] disabled:opacity-50"
-                      >
-                        删除
-                      </button>
-                      <span className="mx-0.5 h-3 w-px shrink-0 bg-[#e7e5e4]" aria-hidden />
-                      <div className="ml-auto flex items-center">
-                        <button
-                          type="button"
-                          onClick={closePinEditor}
-                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
-                        >
-                          取消
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!activePin || !activePinItem) return;
-                            openPinMarkdownEditor(activePin.kind, activePinItem, pinDraft);
-                          }}
-                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
-                        >
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          disabled={pinSaving}
-                          title="Ctrl+Enter"
-                          onClick={() => void savePinContent()}
-                          className="ml-0.5 border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
-                        >
-                          {pinSaving ? "保存中…" : "保存"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <PinEditorPanel
+                    kind={activePin.kind}
+                    pin={activePinItem}
+                    draft={pinDraft}
+                    saving={pinSaving}
+                    editorRef={pinEditorRef}
+                    onDraftChange={setPinDraft}
+                    onClose={closePinEditor}
+                    onSave={() => void savePinContent()}
+                    onDelete={() => void deletePin(activePin.kind, activePinItem)}
+                    onExpand={() =>
+                      openPinMarkdownEditor(activePin.kind, activePinItem, pinDraft)
+                    }
+                  />
                 ) : null}
                 {activeWordMarkItem && activeWordMarkItem.pageNumber === sheetPage ? (
                   <div
