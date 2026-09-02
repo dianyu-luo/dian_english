@@ -8,12 +8,12 @@ export default function Home() {
           <p className="text-lg font-semibold tracking-tight">NE</p>
           <div className="flex items-center gap-4">
             <p className="text-sm text-[#78716c]">Dashboard</p>
-            <button
-              type="button"
+            <Link
+              href="/settings"
               className="border border-[#d6d3d1] bg-[#faf8f4] px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3]"
             >
               设置
-            </button>
+            </Link>
           </div>
         </div>
       </header>
