@@ -102,6 +102,7 @@ function BarChart({
 }) {
   const maxVal = Math.max(...values, 0);
   const { scaleMax, ticks } = yAxisScale(maxVal);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   return (
     <div className="relative mt-6 h-64 w-full overflow-visible">
@@ -134,9 +135,25 @@ function BarChart({
       <div className="absolute inset-y-0 left-0 flex items-end gap-px pb-6" style={{ right: "4rem" }}>
         {values.map((ms, i) => {
           const h = ms <= 0 ? 0 : Math.max(2, (ms / scaleMax) * 100);
-          const active = highlightIndex === i;
+          const active = highlightIndex === i || hoverIndex === i;
+          const showTip = hoverIndex === i;
           return (
-            <div key={i} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+            <div
+              key={i}
+              className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-end"
+              onMouseEnter={() => setHoverIndex(i)}
+              onMouseLeave={() => setHoverIndex(null)}
+            >
+              {showTip ? (
+                <div
+                  className="pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#18181b] px-2 py-1 text-[11px] text-white shadow-sm"
+                  style={{
+                    bottom: `calc(1.5rem + (100% - 1.5rem) * ${h / 100} + 6px)`,
+                  }}
+                >
+                  {labels[i]} · {formatDurationDetailed(ms)}
+                </div>
+              ) : null}
               <div
                 className="w-[55%] max-w-5 rounded-t-sm transition-colors"
                 style={{
@@ -144,7 +161,6 @@ function BarChart({
                   backgroundColor: active || ms > 0 ? ACCENT : "transparent",
                   opacity: ms > 0 ? (active ? 1 : 0.85) : 0,
                 }}
-                title={`${labels[i]} · ${formatDurationDetailed(ms)}`}
               />
             </div>
           );
