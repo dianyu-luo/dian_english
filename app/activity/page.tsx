@@ -1,6 +1,11 @@
 import Link from "next/link";
+import { ActivityDetailClient } from "./detail/activity-detail-client";
 import { formatDurationMs } from "@/lib/activity/format-duration";
 import { formatRelativeTime } from "@/lib/activity/format-relative-time";
+import {
+  getAllDwellSessions,
+  getMonthAllDwellSlices,
+} from "@/lib/activity/file-dwell";
 import {
   recentEditColor,
   type RecentEditColor,
@@ -24,16 +29,28 @@ export const metadata = {
 };
 
 export default async function ActivityPage() {
-  const [summary, recentFiles, recentEdits] = await Promise.all([
-    getActivitySummary(),
-    getRecentFiles(20),
-    getRecentEdits(20),
-  ]);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const [summary, recentFiles, recentEdits, allSessions, monthAllSessions] =
+    await Promise.all([
+      getActivitySummary(),
+      getRecentFiles(20),
+      getRecentEdits(20),
+      getAllDwellSessions(),
+      getMonthAllDwellSlices(year, month),
+    ]);
+
+  const fileSessions = allSessions.map((s) => ({
+    startedAt: s.startedAt,
+    durationMs: s.durationMs,
+  }));
 
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
       <header className="border-b border-[#e7e2d9] bg-[#faf8f4]/px-6 py-4">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
           <p className="text-lg font-semibold tracking-tight">NE</p>
           <nav className="flex items-center gap-4 text-sm text-[#78716c]">
             <Link href="/" className="hover:text-[#1c1917]">
@@ -44,7 +61,7 @@ export default async function ActivityPage() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      <main className="mx-auto w-full max-w-6xl px-6 py-10">
         <section className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">浏览数据</h1>
           <p className="max-w-xl text-base leading-7 text-[#57534e]">
@@ -66,6 +83,13 @@ export default async function ActivityPage() {
             <p className="mt-2 text-2xl font-medium">{summary.fileCount}</p>
           </div>
         </section>
+
+        <ActivityDetailClient
+          fileSessions={fileSessions}
+          monthAllSessions={monthAllSessions}
+          initialYear={year}
+          initialMonth={month}
+        />
 
         <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
           <h2 className="text-lg font-medium">最近访问文件</h2>

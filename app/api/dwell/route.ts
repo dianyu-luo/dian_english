@@ -152,7 +152,7 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true, item: serialize(row) });
 }
 
-/** 清空某资源在指定年月的停留统计 */
+/** 清空指定年月的停留统计；传 resourceKey 时仅清空该资源 */
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const resourceKey = searchParams.get("resourceKey")?.trim();
@@ -160,7 +160,6 @@ export async function DELETE(request: Request) {
   const month = Number(searchParams.get("month"));
 
   if (
-    !resourceKey ||
     !Number.isInteger(year) ||
     year < 1970 ||
     year > 2100 ||
@@ -178,7 +177,9 @@ export async function DELETE(request: Request) {
     .delete(pageDwellSessions)
     .where(
       and(
-        eq(pageDwellSessions.resourceKey, resourceKey),
+        ...(resourceKey
+          ? [eq(pageDwellSessions.resourceKey, resourceKey)]
+          : []),
         gte(pageDwellSessions.startedAt, start),
         lt(pageDwellSessions.startedAt, end),
       ),

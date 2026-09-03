@@ -15,9 +15,10 @@ import {
 import { formatDurationMs } from "@/lib/activity/format-duration";
 
 export type ActivityDetailClientProps = {
-  fileName: string;
+  /** 指定文件时显示占比；省略则为全部应用总览 */
+  fileName?: string;
   fileSessions: DwellSlice[];
-  /** 当前所选月份内全部应用的停留（占比分母） */
+  /** 当前所选月份内全部应用的停留（占比分母）；总览模式下可与 fileSessions 相同 */
   monthAllSessions: DwellSlice[];
   initialYear: number;
   initialMonth: number;
@@ -240,6 +241,7 @@ export function ActivityDetailClient({
   const [sessions, setSessions] = useState(fileSessions);
   const [allMonthSessions, setAllMonthSessions] = useState(monthAllSessions);
   const [clearing, setClearing] = useState(false);
+  const isFileScope = Boolean(fileName?.trim());
 
   useEffect(() => {
     setSessions(fileSessions);
@@ -369,19 +371,24 @@ export function ActivityDetailClient({
   }
 
   async function onClearMonth() {
+    const scopeLabel = isFileScope ? `「${fileName}」` : "全部应用";
     if (
       !window.confirm(
-        `确定清空「${fileName}」在 ${year} 年 ${month} 月的停留统计？此操作不可恢复。`,
+        `确定清空${scopeLabel}在 ${year} 年 ${month} 月的停留统计？此操作不可恢复。`,
       )
     ) {
       return;
     }
     setClearing(true);
     try {
-      const res = await fetch(
-        `/api/dwell?resourceKey=${encodeURIComponent(fileName)}&year=${year}&month=${month}`,
-        { method: "DELETE" },
-      );
+      const qs = new URLSearchParams({
+        year: String(year),
+        month: String(month),
+      });
+      if (isFileScope && fileName) {
+        qs.set("resourceKey", fileName);
+      }
+      const res = await fetch(`/api/dwell?${qs}`, { method: "DELETE" });
       if (!res.ok) return;
       const start = new Date(year, month - 1, 1).getTime();
       const end = new Date(year, month, 1).getTime();
@@ -553,7 +560,7 @@ export function ActivityDetailClient({
 
           <div className="flex w-full shrink-0 flex-col gap-3 sm:w-44">
             <div
-              className="relative overflow-hidden rounded-xl px-3.5 py-3 text-sm leading-6 text-[#312e81]"
+              className="relative overflow-hidden rounded-xl px-3.5 py-3 pr-12 text-sm leading-6 text-[#312e81]"
               style={{ backgroundColor: ACCENT_SOFT }}
             >
               <p>
@@ -570,20 +577,22 @@ export function ActivityDetailClient({
               <CalendarIcon className="pointer-events-none absolute right-2 bottom-2 h-10 w-10 text-[#a5b4fc]/50" />
             </div>
 
-            <div
-              className="relative overflow-hidden rounded-xl px-3.5 py-3 text-sm leading-6 text-[#312e81]"
-              style={{ backgroundColor: ACCENT_SOFT }}
-            >
-              <p className="text-xs text-[#6366f1]">在当月所有使用应用时长中占比</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-[#312e81]">
-                {sharePct}%
-              </p>
+            {isFileScope ? (
               <div
-                className="pointer-events-none absolute right-2 bottom-2 h-10 w-10 rounded-md"
-                style={{ backgroundColor: ACCENT_MUTED, opacity: 0.55 }}
-                aria-hidden
-              />
-            </div>
+                className="relative overflow-hidden rounded-xl px-3.5 py-3 text-sm leading-6 text-[#312e81]"
+                style={{ backgroundColor: ACCENT_SOFT }}
+              >
+                <p className="text-xs text-[#6366f1]">在当月所有使用应用时长中占比</p>
+                <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-[#312e81]">
+                  {sharePct}%
+                </p>
+                <div
+                  className="pointer-events-none absolute right-2 bottom-2 h-10 w-10 rounded-md"
+                  style={{ backgroundColor: ACCENT_MUTED, opacity: 0.55 }}
+                  aria-hidden
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </section>

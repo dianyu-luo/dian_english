@@ -14,7 +14,38 @@ function toMs(value: Date | number): number {
   return value instanceof Date ? value.getTime() : value;
 }
 
-/** 某文件全部停留记录（按开始时间倒序） */
+function mapSessionRows(
+  rows: {
+    id: number;
+    resourceKey: string | null;
+    startedAt: Date | number;
+    durationMs: number;
+  }[],
+): FileDwellSession[] {
+  return rows.map((row) => ({
+    id: row.id,
+    resourceKey: row.resourceKey,
+    startedAt: toMs(row.startedAt),
+    durationMs: Math.max(0, row.durationMs),
+  }));
+}
+
+/** 全部停留记录（按开始时间升序） */
+export async function getAllDwellSessions(): Promise<FileDwellSession[]> {
+  const rows = await db
+    .select({
+      id: pageDwellSessions.id,
+      resourceKey: pageDwellSessions.resourceKey,
+      startedAt: pageDwellSessions.startedAt,
+      durationMs: pageDwellSessions.durationMs,
+    })
+    .from(pageDwellSessions)
+    .orderBy(pageDwellSessions.startedAt);
+
+  return mapSessionRows(rows);
+}
+
+/** 某文件全部停留记录（按开始时间升序） */
 export async function getFileDwellSessions(
   fileName: string,
 ): Promise<FileDwellSession[]> {
@@ -32,12 +63,7 @@ export async function getFileDwellSessions(
     .where(eq(pageDwellSessions.resourceKey, name))
     .orderBy(pageDwellSessions.startedAt);
 
-  return rows.map((row) => ({
-    id: row.id,
-    resourceKey: row.resourceKey,
-    startedAt: toMs(row.startedAt),
-    durationMs: Math.max(0, row.durationMs),
-  }));
+  return mapSessionRows(rows);
 }
 
 /**
