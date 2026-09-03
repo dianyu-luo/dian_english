@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pageDwellSessions } from "@/lib/db/schema";
@@ -34,16 +34,32 @@ function serialize(row: typeof pageDwellSessions.$inferSelect) {
   };
 }
 
-/** 查询学习时长记录；可按 pagePath / resourceKey 过滤 */
+/** 查询学习时长记录；可按 pagePath / resourceKey / 年月 过滤 */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const pagePath = searchParams.get("pagePath")?.trim();
   const resourceKey = searchParams.get("resourceKey")?.trim();
-  const limit = Math.min(Number(searchParams.get("limit") ?? 100) || 100, 500);
+  const year = Number(searchParams.get("year"));
+  const month = Number(searchParams.get("month"));
+  const limit = Math.min(Number(searchParams.get("limit") ?? 100) || 100, 5000);
+
+  const hasMonth =
+    Number.isInteger(year) &&
+    year >= 1970 &&
+    year <= 2100 &&
+    Number.isInteger(month) &&
+    month >= 1 &&
+    month <= 12;
 
   const filters = [
     ...(pagePath ? [eq(pageDwellSessions.pagePath, pagePath)] : []),
     ...(resourceKey ? [eq(pageDwellSessions.resourceKey, resourceKey)] : []),
+    ...(hasMonth
+      ? [
+          gte(pageDwellSessions.startedAt, new Date(year, month - 1, 1)),
+          lt(pageDwellSessions.startedAt, new Date(year, month, 1)),
+        ]
+      : []),
   ];
 
   const rows = await db
@@ -134,4 +150,40 @@ export async function POST(request: Request) {
     .returning();
 
   return NextResponse.json({ ok: true, item: serialize(row) });
+}
+
+/** 清空某资源在指定年月的停留统计 */
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const resourceKey = searchParams.get("resourceKey")?.trim();
+  const year = Number(searchParams.get("year"));
+  const month = Number(searchParams.get("month"));
+
+  if (
+    !resourceKey ||
+    !Number.isInteger(year) ||
+    year < 1970 ||
+    year > 2100 ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  ) {
+    return NextResponse.json({ ok: false, error: "缺少有效参数" }, { status: 400 });
+  }
+
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 1);
+
+  const deleted = await db
+    .delete(pageDwellSessions)
+    .where(
+      and(
+        eq(pageDwellSessions.resourceKey, resourceKey),
+        gte(pageDwellSessions.startedAt, start),
+        lt(pageDwellSessions.startedAt, end),
+      ),
+    )
+    .returning({ id: pageDwellSessions.id });
+
+  return NextResponse.json({ ok: true, deleted: deleted.length });
 }
