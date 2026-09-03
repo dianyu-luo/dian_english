@@ -83,30 +83,43 @@ export default async function ActivityPage() {
               <ul className="divide-y divide-[#e7e2d9]">
                 {recentFiles.map((item) => {
                   const href = `/pdf?fileName=${encodeURIComponent(item.fileName)}`;
+                  const detailHref = `/activity/detail?fileName=${encodeURIComponent(item.fileName)}`;
                   const time = formatRelativeTime(item.updatedAt);
                   return (
                     <li key={item.id}>
-                      <Link
-                        href={href}
-                        className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_10.5rem_5.5rem] sm:items-center sm:gap-4"
-                      >
-                        <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]">
+                      <div className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_10.5rem_5.5rem] sm:items-center sm:gap-4">
+                        <Link
+                          href={href}
+                          className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]"
+                        >
                           {item.fileName}
-                        </span>
-                        <span className="whitespace-nowrap text-xs tabular-nums text-[#57534e] sm:text-right">
+                        </Link>
+                        <Link
+                          href={href}
+                          className="whitespace-nowrap text-xs tabular-nums text-[#57534e] sm:text-right"
+                        >
                           {formatDurationMs(item.todayDwellMs)}
-                        </span>
-                        <span className="whitespace-nowrap text-xs tabular-nums text-[#57534e] sm:text-right">
+                        </Link>
+                        <Link
+                          href={href}
+                          className="whitespace-nowrap text-xs tabular-nums text-[#57534e] sm:text-right"
+                        >
                           {formatDurationMs(item.dwellMs)}
-                        </span>
-                        <span className="whitespace-nowrap text-xs text-[#a8a29e] sm:text-right">
+                        </Link>
+                        <Link
+                          href={href}
+                          className="whitespace-nowrap text-xs text-[#a8a29e] sm:text-right"
+                        >
                           第 {item.pageNumber} 页
                           {time ? ` · ${time}` : ""}
-                        </span>
-                        <span className="whitespace-nowrap text-xs text-[#57534e] sm:text-right">
+                        </Link>
+                        <Link
+                          href={detailHref}
+                          className="whitespace-nowrap text-xs text-[#57534e] underline-offset-2 hover:underline sm:text-right"
+                        >
                           查看
-                        </span>
-                      </Link>
+                        </Link>
+                      </div>
                     </li>
                   );
                 })}
