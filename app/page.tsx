@@ -1,22 +1,10 @@
 import Link from "next/link";
+import { SiteHeader } from "@/components/site-header";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
-      <header className="border-b border-[#e7e2d9] bg-[#faf8f4] px-6 py-4">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
-          <p className="text-lg font-semibold tracking-tight">NE</p>
-          <div className="flex items-center gap-4">
-            <p className="text-sm text-[#78716c]">Dashboard</p>
-            <Link
-              href="/settings"
-              className="border border-[#d6d3d1] bg-[#faf8f4] px-3 py-1.5 text-sm font-medium hover:bg-[#f0ebe3]"
-            >
-              设置
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <section className="space-y-2">
