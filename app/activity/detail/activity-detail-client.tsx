@@ -58,6 +58,8 @@ const MARK_NOTE = "#eab308";
 /** 标注角标（批注 / 问题 / 书签 / 待办） */
 const MARK_ANNOTATION = "#ef4444";
 
+type PageMarkFilter = "all" | "notes" | "annotations";
+
 function pageMarkOf(
   pageMarks: PageMarksMap | undefined,
   page: number,
@@ -305,6 +307,7 @@ function PageReadingHeatmap({
   const maxMs = Math.max(...pageMs, 0);
   const [hoverPage, setHoverPage] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [filter, setFilter] = useState<PageMarkFilter>("all");
   const readCount = pageMs.filter((ms) => ms > 0).length;
   const totalMs = pageMs.reduce((a, b) => a + b, 0);
   const totalPages = pageMs.length;
@@ -325,13 +328,6 @@ function PageReadingHeatmap({
   const canCollapse = totalPages > PAGE_HEAT_WINDOW;
   const showStart = expanded || !canCollapse ? 1 : windowRange.start;
   const showEnd = expanded || !canCollapse ? totalPages : windowRange.end;
-  const visiblePages = useMemo(() => {
-    const list: { page: number; ms: number }[] = [];
-    for (let page = showStart; page <= showEnd; page++) {
-      list.push({ page, ms: pageMs[page - 1] ?? 0 });
-    }
-    return list;
-  }, [pageMs, showStart, showEnd]);
 
   const markStats = useMemo(() => {
     let notePages = 0;
@@ -344,6 +340,40 @@ function PageReadingHeatmap({
     return { notePages, annotationPages };
   }, [pageMarks]);
 
+  const visiblePages = useMemo(() => {
+    const list: {
+      page: number;
+      ms: number;
+      notes: number;
+      annotations: number;
+      matched: boolean;
+    }[] = [];
+    for (let page = showStart; page <= showEnd; page++) {
+      const marks = pageMarkOf(pageMarks, page);
+      const matched =
+        filter === "all" ||
+        (filter === "notes" && marks.notes > 0) ||
+        (filter === "annotations" && marks.annotations > 0);
+      list.push({
+        page,
+        ms: pageMs[page - 1] ?? 0,
+        notes: marks.notes,
+        annotations: marks.annotations,
+        matched,
+      });
+    }
+    return list;
+  }, [pageMs, pageMarks, showStart, showEnd, filter]);
+
+  const markedInView = useMemo(
+    () => visiblePages.filter((p) => p.notes > 0 || p.annotations > 0),
+    [visiblePages],
+  );
+
+  const activePage = hoverPage ?? focusPage;
+  const activeMarks = pageMarkOf(pageMarks, activePage);
+  const activeMs = pageMs[activePage - 1] ?? 0;
+
   if (pageMs.length === 0) {
     return (
       <section className="rounded-2xl border border-[#e7e2d9] bg-white px-5 py-5 shadow-sm sm:px-6">
@@ -354,6 +384,12 @@ function PageReadingHeatmap({
       </section>
     );
   }
+
+  const filters: { id: PageMarkFilter; label: string; count?: number }[] = [
+    { id: "all", label: "全部" },
+    { id: "notes", label: "有笔记", count: markStats.notePages },
+    { id: "annotations", label: "有标注", count: markStats.annotationPages },
+  ];
 
   return (
     <section className="rounded-2xl border border-[#e7e2d9] bg-white px-5 py-5 shadow-sm sm:px-6">
@@ -368,125 +404,204 @@ function PageReadingHeatmap({
               : null}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#78716c]">
-            <span className="inline-flex items-center gap-1.5">
-              <span>少</span>
-              <span className="flex gap-0.5">
-                {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-                  <span
-                    key={t}
-                    className="h-3 w-3 rounded-sm"
-                    style={{
-                      backgroundColor:
-                        t === 0
-                          ? PAGE_HEAT_EMPTY
-                          : `rgba(${PAGE_HEAT_RGB}, ${0.18 + 0.82 * t})`,
-                    }}
-                  />
-                ))}
-              </span>
-              <span>多</span>
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: MARK_NOTE }}
-              />
-              笔记
-              {markStats.notePages > 0 ? ` ${markStats.notePages}` : ""}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: MARK_ANNOTATION }}
-              />
-              标注
-              {markStats.annotationPages > 0
-                ? ` ${markStats.annotationPages}`
-                : ""}
-            </span>
-          </div>
-          {canCollapse ? (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] px-3 py-1.5 text-sm text-[#3f3f46] hover:bg-[#f4f4f5]"
-            >
-              {expanded ? "收起至附近 100 页" : `展开全部 ${totalPages} 页`}
-            </button>
-          ) : null}
-        </div>
+        {canCollapse ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] px-3 py-1.5 text-sm text-[#3f3f46] hover:bg-[#f4f4f5]"
+          >
+            {expanded ? "收起至附近 100 页" : `展开全部 ${totalPages} 页`}
+          </button>
+        ) : null}
       </div>
 
-      <div
-        className="mt-5 grid gap-1"
-        style={{
-          gridTemplateColumns: `repeat(${Math.min(PAGE_HEAT_COLS, visiblePages.length)}, minmax(0, 1fr))`,
-        }}
-      >
-        {visiblePages.map(({ page, ms }) => {
-          const intensity =
-            ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
-          const active = hoverPage === page;
-          const isFocus = page === focusPage;
-          const marks = pageMarkOf(pageMarks, page);
-          const href = buildPdfHref({ fileName, pageNumber: page });
-          const tipParts = [
-            `第 ${page} 页`,
-            formatDurationDetailed(ms),
-            marks.notes > 0 ? `笔记 ${marks.notes}` : "",
-            marks.annotations > 0 ? `标注 ${marks.annotations}` : "",
-            isFocus ? "最近阅读" : "",
-          ].filter(Boolean);
-          return (
-            <Link
-              key={page}
-              href={href}
-              className="relative block"
-              onMouseEnter={() => setHoverPage(page)}
-              onMouseLeave={() => setHoverPage(null)}
-              title={tipParts.join(" · ")}
-              aria-label={`跳转到第 ${page} 页`}
-            >
-              {active ? (
-                <div className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#18181b] px-2 py-1 text-[11px] text-white shadow-sm">
-                  {tipParts.join(" · ")}
-                </div>
-              ) : null}
-              <div
-                className="relative aspect-square overflow-hidden rounded-sm transition-shadow hover:brightness-95"
-                style={{
-                  backgroundColor:
-                    ms > 0
-                      ? `rgba(${PAGE_HEAT_RGB}, ${intensity})`
-                      : PAGE_HEAT_EMPTY,
-                  boxShadow:
-                    active || isFocus
-                      ? `inset 0 0 0 2px rgb(${PAGE_HEAT_RGB})`
-                      : undefined,
-                }}
-              >
-                {(marks.notes > 0 || marks.annotations > 0) && (
-                  <span className="absolute right-0.5 top-0.5 flex gap-0.5">
-                    {marks.notes > 0 ? (
+      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_12.5rem]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-4 text-sm">
+            {filters.map((item) => {
+              const on = filter === item.id;
+              const disabled =
+                item.id !== "all" && (item.count == null || item.count === 0);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setFilter(item.id)}
+                  className={`relative pb-1 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                    on
+                      ? "font-medium text-[#1c1917]"
+                      : "text-[#78716c] hover:text-[#1c1917]"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    {item.id === "notes" ? (
                       <span
-                        className="h-1.5 w-1.5 rounded-full ring-1 ring-white/80"
+                        className="h-2 w-2 rounded-full"
                         style={{ backgroundColor: MARK_NOTE }}
                       />
                     ) : null}
-                    {marks.annotations > 0 ? (
+                    {item.id === "annotations" ? (
                       <span
-                        className="h-1.5 w-1.5 rounded-full ring-1 ring-white/80"
+                        className="h-2 w-2 rounded-full"
                         style={{ backgroundColor: MARK_ANNOTATION }}
                       />
                     ) : null}
+                    {item.label}
+                    {item.count != null ? (
+                      <span className="tabular-nums text-[#a8a29e]">
+                        {item.count}
+                      </span>
+                    ) : null}
                   </span>
-                )}
+                  {on ? (
+                    <span className="absolute inset-x-0 -bottom-0.5 h-px bg-[#1c1917]" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            className="mt-4 grid gap-1"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(PAGE_HEAT_COLS, visiblePages.length)}, minmax(0, 1fr))`,
+            }}
+            onMouseLeave={() => setHoverPage(null)}
+          >
+            {visiblePages.map(({ page, ms, notes, annotations, matched }) => {
+              const intensity =
+                ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
+              const isHover = hoverPage === page;
+              const isFocus = page === focusPage;
+              const href = buildPdfHref({ fileName, pageNumber: page });
+              return (
+                <Link
+                  key={page}
+                  href={href}
+                  className="relative block outline-none transition-opacity"
+                  style={{ opacity: matched ? 1 : 0.16 }}
+                  onMouseEnter={() => setHoverPage(page)}
+                  onFocus={() => setHoverPage(page)}
+                  title={`第 ${page} 页`}
+                  aria-label={`跳转到第 ${page} 页`}
+                >
+                  <div
+                    className="relative aspect-square overflow-hidden rounded-sm transition-shadow hover:brightness-95"
+                    style={{
+                      backgroundColor:
+                        ms > 0
+                          ? `rgba(${PAGE_HEAT_RGB}, ${intensity})`
+                          : PAGE_HEAT_EMPTY,
+                      boxShadow:
+                        isHover || isFocus
+                          ? `inset 0 0 0 2px rgb(${PAGE_HEAT_RGB})`
+                          : undefined,
+                    }}
+                  >
+                    {(notes > 0 || annotations > 0) && (
+                      <span className="absolute right-0.5 top-0.5 flex gap-0.5">
+                        {notes > 0 ? (
+                          <span
+                            className="h-1.5 w-1.5 rounded-full ring-1 ring-white/80"
+                            style={{ backgroundColor: MARK_NOTE }}
+                          />
+                        ) : null}
+                        {annotations > 0 ? (
+                          <span
+                            className="h-1.5 w-1.5 rounded-full ring-1 ring-white/80"
+                            style={{ backgroundColor: MARK_ANNOTATION }}
+                          />
+                        ) : null}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <aside className="flex flex-col border-t border-[#e7e2d9] pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+          <p className="text-[11px] tracking-wide text-[#a8a29e]">当前页</p>
+          <p className="mt-1 text-3xl font-medium tabular-nums tracking-tight text-[#1c1917]">
+            {activePage}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-[#57534e]">
+            {activeMs > 0
+              ? `阅读 ${formatDurationDetailed(activeMs)}`
+              : "尚无阅读时长"}
+            {activePage === focusPage ? (
+              <span className="text-[#a8a29e]"> · 最近</span>
+            ) : null}
+          </p>
+          {(activeMarks.notes > 0 || activeMarks.annotations > 0) && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#57534e]">
+              {activeMarks.notes > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: MARK_NOTE }}
+                  />
+                  笔记 {activeMarks.notes}
+                </span>
+              ) : null}
+              {activeMarks.annotations > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: MARK_ANNOTATION }}
+                  />
+                  标注 {activeMarks.annotations}
+                </span>
+              ) : null}
+            </div>
+          )}
+          <Link
+            href={buildPdfHref({ fileName, pageNumber: activePage })}
+            className="mt-4 inline-block text-sm text-[#1c1917] underline underline-offset-4"
+          >
+            打开第 {activePage} 页
+          </Link>
+
+          <div className="mt-8">
+            <p className="text-[11px] tracking-wide text-[#a8a29e]">
+              本段有笔记 / 标注
+            </p>
+            {markedInView.length === 0 ? (
+              <p className="mt-2 text-sm text-[#a8a29e]">暂无</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1.5">
+                {markedInView.map((p) => (
+                  <Link
+                    key={p.page}
+                    href={buildPdfHref({ fileName, pageNumber: p.page })}
+                    onMouseEnter={() => setHoverPage(p.page)}
+                    className={`inline-flex items-center gap-1 text-sm tabular-nums underline-offset-2 hover:underline ${
+                      p.page === activePage
+                        ? "font-medium text-[#1c1917]"
+                        : "text-[#78716c]"
+                    }`}
+                  >
+                    {p.page}
+                    {p.notes > 0 ? (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: MARK_NOTE }}
+                      />
+                    ) : null}
+                    {p.annotations > 0 ? (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: MARK_ANNOTATION }}
+                      />
+                    ) : null}
+                  </Link>
+                ))}
               </div>
-            </Link>
-          );
-        })}
+            )}
+          </div>
+        </aside>
       </div>
     </section>
   );
