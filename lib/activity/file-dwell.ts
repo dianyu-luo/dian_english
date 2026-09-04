@@ -71,19 +71,28 @@ export async function getFileDwellSessions(
   return mapSessionRows(rows);
 }
 
-/** 某文件 PDF 总页数（来自最近阅读；未知则为 0） */
-export async function getFileTotalPages(fileName: string): Promise<number> {
+/** 某文件 PDF 元信息：总页数与最近阅读页 */
+export async function getFilePdfMeta(
+  fileName: string,
+): Promise<{ totalPages: number; recentPage: number }> {
   const name = fileName.trim();
-  if (!name) return 0;
+  if (!name) return { totalPages: 0, recentPage: 0 };
 
   const [row] = await db
-    .select({ totalNumber: pdfRecentReads.totalNumber })
+    .select({
+      totalNumber: pdfRecentReads.totalNumber,
+      pageNumber: pdfRecentReads.pageNumber,
+    })
     .from(pdfRecentReads)
     .where(eq(pdfRecentReads.fileName, name))
     .limit(1);
 
-  const n = row?.totalNumber ?? 0;
-  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 0;
+  const total = row?.totalNumber ?? 0;
+  const recent = row?.pageNumber ?? 0;
+  return {
+    totalPages: Number.isFinite(total) && total >= 1 ? Math.floor(total) : 0,
+    recentPage: Number.isFinite(recent) && recent >= 1 ? Math.floor(recent) : 0,
+  };
 }
 
 /**

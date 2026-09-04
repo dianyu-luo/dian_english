@@ -23,6 +23,8 @@ export type ActivityDetailClientProps = {
   monthAllSessions: DwellSliceWithPage[];
   /** PDF 总页数；用于页码热力图范围 */
   totalPages?: number;
+  /** 最近阅读页码；折叠时以附近 50 页为窗口 */
+  recentPage?: number;
   initialYear: number;
   initialMonth: number;
 };
@@ -44,6 +46,27 @@ const ACCENT_MUTED = "#c7d2fe";
 const PAGE_HEAT_RGB = "22, 163, 74";
 const PAGE_HEAT_EMPTY = "#f4f4f5";
 const PAGE_HEAT_COLS = 20;
+/** 折叠时只展示最近阅读附近的页数 */
+const PAGE_HEAT_WINDOW = 50;
+
+function pageHeatWindow(
+  totalPages: number,
+  centerPage: number,
+  windowSize = PAGE_HEAT_WINDOW,
+): { start: number; end: number } {
+  const total = Math.max(1, totalPages);
+  const size = Math.min(windowSize, total);
+  let center =
+    Number.isFinite(centerPage) && centerPage >= 1 ? Math.floor(centerPage) : 1;
+  center = Math.min(total, Math.max(1, center));
+  let start = Math.max(1, center - Math.floor((size - 1) / 2));
+  let end = start + size - 1;
+  if (end > total) {
+    end = total;
+    start = Math.max(1, end - size + 1);
+  }
+  return { start, end };
+}
 
 function CalendarIcon({ className }: { className?: string }) {
   return (
@@ -249,13 +272,41 @@ function Heatmap({
 
 function PageReadingHeatmap({
   pageMs,
+  recentPage = 0,
 }: {
   pageMs: number[];
+  recentPage?: number;
 }) {
   const maxMs = Math.max(...pageMs, 0);
   const [hoverPage, setHoverPage] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const readCount = pageMs.filter((ms) => ms > 0).length;
   const totalMs = pageMs.reduce((a, b) => a + b, 0);
+  const totalPages = pageMs.length;
+
+  const focusPage = useMemo(() => {
+    if (recentPage >= 1 && recentPage <= totalPages) return recentPage;
+    for (let i = totalPages - 1; i >= 0; i--) {
+      if (pageMs[i] > 0) return i + 1;
+    }
+    return 1;
+  }, [recentPage, pageMs, totalPages]);
+
+  const windowRange = useMemo(
+    () => pageHeatWindow(totalPages, focusPage),
+    [totalPages, focusPage],
+  );
+
+  const canCollapse = totalPages > PAGE_HEAT_WINDOW;
+  const showStart = expanded || !canCollapse ? 1 : windowRange.start;
+  const showEnd = expanded || !canCollapse ? totalPages : windowRange.end;
+  const visiblePages = useMemo(() => {
+    const list: { page: number; ms: number }[] = [];
+    for (let page = showStart; page <= showEnd; page++) {
+      list.push({ page, ms: pageMs[page - 1] ?? 0 });
+    }
+    return list;
+  }, [pageMs, showStart, showEnd]);
 
   if (pageMs.length === 0) {
     return (
@@ -274,40 +325,55 @@ function PageReadingHeatmap({
         <div>
           <h2 className="text-xl font-semibold tracking-tight">页码阅读热力图</h2>
           <p className="mt-1 text-sm text-[#78716c]">
-            共 {pageMs.length} 页 · 已阅读 {readCount} 页 · 累计{" "}
+            共 {totalPages} 页 · 已阅读 {readCount} 页 · 累计{" "}
             {formatDurationDetailed(totalMs)}
+            {canCollapse && !expanded
+              ? ` · 显示第 ${showStart}–${showEnd} 页（最近阅读附近）`
+              : null}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-[#78716c]">
-          <span>少</span>
-          <div className="flex gap-0.5">
-            {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-              <span
-                key={t}
-                className="h-3 w-3 rounded-sm"
-                style={{
-                  backgroundColor:
-                    t === 0
-                      ? PAGE_HEAT_EMPTY
-                      : `rgba(${PAGE_HEAT_RGB}, ${0.18 + 0.82 * t})`,
-                }}
-              />
-            ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-[11px] text-[#78716c]">
+            <span>少</span>
+            <div className="flex gap-0.5">
+              {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                <span
+                  key={t}
+                  className="h-3 w-3 rounded-sm"
+                  style={{
+                    backgroundColor:
+                      t === 0
+                        ? PAGE_HEAT_EMPTY
+                        : `rgba(${PAGE_HEAT_RGB}, ${0.18 + 0.82 * t})`,
+                  }}
+                />
+              ))}
+            </div>
+            <span>多</span>
           </div>
-          <span>多</span>
+          {canCollapse ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] px-3 py-1.5 text-sm text-[#3f3f46] hover:bg-[#f4f4f5]"
+            >
+              {expanded ? "收起至附近 50 页" : `展开全部 ${totalPages} 页`}
+            </button>
+          ) : null}
         </div>
       </div>
 
       <div
         className="mt-5 grid gap-1"
         style={{
-          gridTemplateColumns: `repeat(${Math.min(PAGE_HEAT_COLS, pageMs.length)}, minmax(0, 1fr))`,
+          gridTemplateColumns: `repeat(${Math.min(PAGE_HEAT_COLS, visiblePages.length)}, minmax(0, 1fr))`,
         }}
       >
-        {pageMs.map((ms, i) => {
-          const page = i + 1;
-          const intensity = ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
+        {visiblePages.map(({ page, ms }) => {
+          const intensity =
+            ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
           const active = hoverPage === page;
+          const isFocus = page === focusPage;
           return (
             <div
               key={page}
@@ -318,6 +384,7 @@ function PageReadingHeatmap({
               {active ? (
                 <div className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#18181b] px-2 py-1 text-[11px] text-white shadow-sm">
                   第 {page} 页 · {formatDurationDetailed(ms)}
+                  {isFocus ? " · 最近阅读" : ""}
                 </div>
               ) : null}
               <div
@@ -328,9 +395,10 @@ function PageReadingHeatmap({
                     ms > 0
                       ? `rgba(${PAGE_HEAT_RGB}, ${intensity})`
                       : PAGE_HEAT_EMPTY,
-                  boxShadow: active
-                    ? `inset 0 0 0 2px rgb(${PAGE_HEAT_RGB})`
-                    : undefined,
+                  boxShadow:
+                    active || isFocus
+                      ? `inset 0 0 0 2px rgb(${PAGE_HEAT_RGB})`
+                      : undefined,
                 }}
               />
             </div>
@@ -346,6 +414,7 @@ export function ActivityDetailClient({
   fileSessions,
   monthAllSessions,
   totalPages = 0,
+  recentPage = 0,
   initialYear,
   initialMonth,
 }: ActivityDetailClientProps) {
@@ -722,7 +791,7 @@ export function ActivityDetailClient({
 
       {isFileScope ? (
         <div className="lg:col-span-2">
-          <PageReadingHeatmap pageMs={pageMs} />
+          <PageReadingHeatmap pageMs={pageMs} recentPage={recentPage} />
         </div>
       ) : null}
     </div>
