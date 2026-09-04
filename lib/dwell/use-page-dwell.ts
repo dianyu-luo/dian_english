@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { decideDwellIdle, DWELL_IDLE_MS } from "./idle";
+import { decideDwellIdle, DWELL_IDLE_MS, DWELL_MIN_MS } from "./idle";
 
 /** 失焦后在该时长内切回，视作未切换，仍属同一段 */
 export const DWELL_FOCUS_GAP_MS = 3 * 60 * 1000;
-export { DWELL_IDLE_MS };
+export { DWELL_IDLE_MS, DWELL_MIN_MS };
 
 const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
 
@@ -57,6 +57,21 @@ function persist(payload: DwellPayload, keepalive = false) {
   });
 }
 
+/** 未满最短时长不写库；若此前已落库且本段结束，仍上报以便服务端删除 */
+function persistDwell(
+  payload: DwellPayload,
+  opts: { keepalive?: boolean; alreadyPersisted: boolean },
+): boolean {
+  if (payload.durationMs < DWELL_MIN_MS) {
+    if (opts.alreadyPersisted && payload.endedAt != null) {
+      persist(payload, opts.keepalive);
+    }
+    return false;
+  }
+  persist(payload, opts.keepalive);
+  return true;
+}
+
 /**
  * 页面停留 / 学习时长采集：
  * - 打开页面开始计时
@@ -95,7 +110,9 @@ export function usePageDwell({
     let blurredAt: number | null = null;
     let ended = false;
     let hasSession = false;
+    let alreadyPersisted = false;
     let idleTimer = 0;
+    let minPersistTimer = 0;
 
     const buildPayload = (endedAt: number | null): DwellPayload => {
       const end = endedAt ?? Date.now();
@@ -116,11 +133,25 @@ export function usePageDwell({
       idleTimer = 0;
     };
 
+    const clearMinPersistTimer = () => {
+      if (!minPersistTimer) return;
+      window.clearTimeout(minPersistTimer);
+      minPersistTimer = 0;
+    };
+
+    const writeDwell = (payload: DwellPayload, keepalive = false) => {
+      alreadyPersisted = persistDwell(payload, {
+        keepalive,
+        alreadyPersisted,
+      });
+    };
+
     const endSession = (at: number, keepalive = false) => {
       if (!hasSession || ended) return;
       ended = true;
       clearIdleTimer();
-      persist(
+      clearMinPersistTimer();
+      writeDwell(
         {
           ...buildPayload(at),
           endedAt: at,
@@ -148,6 +179,25 @@ export function usePageDwell({
       idleTimer = window.setTimeout(checkIdle, limit);
     };
 
+    const armMinPersistTimer = () => {
+      clearMinPersistTimer();
+      if (!hasSession || ended || blurredAt != null || alreadyPersisted) return;
+      const remaining = DWELL_MIN_MS - (Date.now() - startedAt);
+      if (remaining <= 0) {
+        writeDwell({ ...buildPayload(null), durationMs: Math.max(0, Date.now() - startedAt), endedAt: null });
+        return;
+      }
+      minPersistTimer = window.setTimeout(() => {
+        minPersistTimer = 0;
+        if (!hasSession || ended || blurredAt != null || alreadyPersisted) return;
+        writeDwell({
+          ...buildPayload(null),
+          durationMs: Math.max(0, Date.now() - startedAt),
+          endedAt: null,
+        });
+      }, remaining);
+    };
+
     const startSession = (at = Date.now()) => {
       clientSessionId = newSessionId();
       startedAt = at;
@@ -155,8 +205,10 @@ export function usePageDwell({
       blurredAt = null;
       ended = false;
       hasSession = true;
-      persist({ ...buildPayload(null), durationMs: 0, endedAt: null });
+      alreadyPersisted = false;
+      // 未满 DWELL_MIN_MS 不落库
       armIdleTimer();
+      armMinPersistTimer();
     };
 
     const saveProgress = (keepalive = false) => {
@@ -167,7 +219,7 @@ export function usePageDwell({
         return;
       }
       const now = Date.now();
-      persist(
+      writeDwell(
         {
           ...buildPayload(null),
           endedAt: null,
@@ -191,9 +243,10 @@ export function usePageDwell({
     const onHidden = () => {
       if (!hasSession || ended || blurredAt != null) return;
       clearIdleTimer();
+      clearMinPersistTimer();
       const now = Date.now();
       // 暂存离开时刻；是否拆段等切回后再定
-      persist(
+      writeDwell(
         {
           ...buildPayload(now),
           endedAt: now,
@@ -227,12 +280,13 @@ export function usePageDwell({
       }
       // < gapMs：视作未切换，同一段继续
       ended = false;
-      persist({
+      writeDwell({
         ...buildPayload(null),
         endedAt: null,
         durationMs: Math.max(0, Date.now() - startedAt),
       });
       armIdleTimer();
+      armMinPersistTimer();
     };
 
     const onVisibilityChange = () => {
@@ -278,6 +332,7 @@ export function usePageDwell({
     return () => {
       window.clearInterval(heartbeat);
       clearIdleTimer();
+      clearMinPersistTimer();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("focus", onWindowFocus);

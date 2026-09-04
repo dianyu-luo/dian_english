@@ -2,6 +2,7 @@ import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pageDwellSessions } from "@/lib/db/schema";
+import { DWELL_MIN_MS } from "@/lib/dwell/idle";
 
 type SaveBody = {
   clientSessionId?: string;
@@ -115,15 +116,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "endedAt 无效" }, { status: 400 });
   }
 
-  const now = new Date();
-  const startedAtDate = toDate(startedAt);
-  const endedAtDate = endedAt != null ? toDate(endedAt) : null;
-
+  const roundedDuration = Math.round(durationMs);
   const [existing] = await db
     .select()
     .from(pageDwellSessions)
     .where(eq(pageDwellSessions.clientSessionId, clientSessionId))
     .limit(1);
+
+  // 短于最短停留：不入库；若已有记录则删除（如空闲截断后不足阈值）
+  if (roundedDuration < DWELL_MIN_MS) {
+    if (existing) {
+      await db
+        .delete(pageDwellSessions)
+        .where(eq(pageDwellSessions.clientSessionId, clientSessionId));
+    }
+    return NextResponse.json({ ok: true, skipped: true });
+  }
+
+  const now = new Date();
+  const startedAtDate = toDate(startedAt);
+  const endedAtDate = endedAt != null ? toDate(endedAt) : null;
 
   if (existing) {
     const [row] = await db
@@ -134,7 +146,7 @@ export async function POST(request: Request) {
         pageNumber,
         startedAt: startedAtDate,
         endedAt: endedAtDate,
-        durationMs: Math.round(durationMs),
+        durationMs: roundedDuration,
         updatedAt: now,
       })
       .where(eq(pageDwellSessions.clientSessionId, clientSessionId))
@@ -151,7 +163,7 @@ export async function POST(request: Request) {
       pageNumber,
       startedAt: startedAtDate,
       endedAt: endedAtDate,
-      durationMs: Math.round(durationMs),
+      durationMs: roundedDuration,
       createdAt: now,
       updatedAt: now,
     })
