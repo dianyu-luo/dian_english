@@ -23,7 +23,7 @@ export type ActivityDetailClientProps = {
   monthAllSessions: DwellSliceWithPage[];
   /** PDF 总页数；用于页码热力图范围 */
   totalPages?: number;
-  /** 最近阅读页码；折叠时以附近 50 页为窗口 */
+  /** 最近阅读页码；折叠时以附近 100 页为窗口 */
   recentPage?: number;
   initialYear: number;
   initialMonth: number;
@@ -47,7 +47,7 @@ const PAGE_HEAT_RGB = "22, 163, 74";
 const PAGE_HEAT_EMPTY = "#f4f4f5";
 const PAGE_HEAT_COLS = 20;
 /** 折叠时只展示最近阅读附近的页数 */
-const PAGE_HEAT_WINDOW = 50;
+const PAGE_HEAT_WINDOW = 100;
 
 function pageHeatWindow(
   totalPages: number,
@@ -357,7 +357,7 @@ function PageReadingHeatmap({
               onClick={() => setExpanded((v) => !v)}
               className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] px-3 py-1.5 text-sm text-[#3f3f46] hover:bg-[#f4f4f5]"
             >
-              {expanded ? "收起至附近 50 页" : `展开全部 ${totalPages} 页`}
+              {expanded ? "收起至附近 100 页" : `展开全部 ${totalPages} 页`}
             </button>
           ) : null}
         </div>
