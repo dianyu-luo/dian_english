@@ -42,11 +42,10 @@ export default async function Home() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#f6f4ef] font-sans text-[#1c1917]">
-      <div className="pointer-events-none absolute inset-0" aria-hidden>
-        <div className="absolute -left-28 -top-10 h-[32rem] w-[32rem] rounded-full bg-[#e4ddd2]/70 blur-3xl" />
-        <div className="absolute -right-20 top-28 h-[26rem] w-[26rem] rounded-full bg-[#d5ddd8]/55 blur-3xl" />
-        <div className="home-grain absolute inset-0 opacity-[0.4]" />
-      </div>
+      <div
+        className="home-grain pointer-events-none absolute inset-0 opacity-[0.4]"
+        aria-hidden
+      />
 
       <SiteHeader />
 
