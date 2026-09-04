@@ -34,6 +34,91 @@ export function pageMsTotals(
   return Array.from({ length: maxPage }, (_, i) => byPage.get(i + 1) ?? 0);
 }
 
+/**
+ * 将停留片段裁剪到 [rangeStartMs, rangeEndMs)（右开）。
+ * 跨边界的片段会按重叠时长截断。
+ */
+export function clipSlicesToRange<T extends DwellSlice>(
+  slices: T[],
+  rangeStartMs: number,
+  rangeEndMs: number,
+): T[] {
+  if (!(rangeEndMs > rangeStartMs)) return [];
+  const out: T[] = [];
+  for (const slice of slices) {
+    const start = toTime(slice.startedAt);
+    if (!Number.isFinite(start)) continue;
+    const duration = Math.max(0, Math.round(slice.durationMs));
+    if (duration <= 0) continue;
+    const end = start + duration;
+    const overlapStart = Math.max(start, rangeStartMs);
+    const overlapEnd = Math.min(end, rangeEndMs);
+    if (overlapEnd > overlapStart) {
+      out.push({
+        ...slice,
+        startedAt: overlapStart,
+        durationMs: overlapEnd - overlapStart,
+      });
+    }
+  }
+  return out;
+}
+
+/** 本地某日 00:00–次日 00:00 */
+export function localDayRange(day: Date): { startMs: number; endMs: number } {
+  const start = startOfLocalDay(day);
+  return { startMs: start.getTime(), endMs: addDays(start, 1).getTime() };
+}
+
+/** 本地某小时 [h, h+1) */
+export function localHourRange(
+  day: Date,
+  hour: number,
+): { startMs: number; endMs: number } {
+  const h = Math.min(23, Math.max(0, Math.floor(hour)));
+  const start = new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate(),
+    h,
+  );
+  return { startMs: start.getTime(), endMs: start.getTime() + 3_600_000 };
+}
+
+/** 含 dayInWeek 的自然周（周一 00:00–下周一 00:00） */
+export function localWeekRange(dayInWeek: Date): {
+  startMs: number;
+  endMs: number;
+} {
+  const day = startOfLocalDay(dayInWeek);
+  const dow = day.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const monday = addDays(day, mondayOffset);
+  return { startMs: monday.getTime(), endMs: addDays(monday, 7).getTime() };
+}
+
+/** 本地某月 1 日 00:00–下月 1 日 00:00 */
+export function localMonthRange(
+  year: number,
+  month: number,
+): { startMs: number; endMs: number } {
+  return {
+    startMs: new Date(year, month - 1, 1).getTime(),
+    endMs: new Date(year, month, 1).getTime(),
+  };
+}
+
+/** 本地某年 1/1 00:00–次年 1/1 00:00 */
+export function localYearRange(year: number): {
+  startMs: number;
+  endMs: number;
+} {
+  return {
+    startMs: new Date(year, 0, 1).getTime(),
+    endMs: new Date(year + 1, 0, 1).getTime(),
+  };
+}
+
 function toTime(value: number | Date): number {
   return value instanceof Date ? value.getTime() : value;
 }

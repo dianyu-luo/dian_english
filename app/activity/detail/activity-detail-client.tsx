@@ -4,12 +4,18 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  clipSlicesToRange,
   dailyMsForMonth,
   dailyMsForWeek,
   dayKeyFromDate,
   formatDurationDetailed,
   hourlyMsForDay,
   isSameLocalDay,
+  localDayRange,
+  localHourRange,
+  localMonthRange,
+  localWeekRange,
+  localYearRange,
   monthlyMsForYear,
   pageMsTotals,
   type DwellSliceWithPage,
@@ -56,6 +62,53 @@ export type ActivityDetailClientProps = {
 };
 
 type RangeMode = "day" | "week" | "month" | "year";
+
+/** 根据时长统计的粒度 / 小时选中，得到页码热力图的时间窗 */
+function resolvePageHeatRange(
+  rangeMode: RangeMode,
+  selectedDay: Date,
+  year: number,
+  month: number,
+  selectedHour: number | null,
+): { startMs: number; endMs: number; label: string } {
+  if (rangeMode === "day") {
+    if (selectedHour != null && selectedHour >= 0 && selectedHour <= 23) {
+      const { startMs, endMs } = localHourRange(selectedDay, selectedHour);
+      const day = dayKeyFromDate(selectedDay);
+      const hh = String(selectedHour).padStart(2, "0");
+      return {
+        startMs,
+        endMs,
+        label: `${day} ${hh}:00–${hh}:59`,
+      };
+    }
+    const { startMs, endMs } = localDayRange(selectedDay);
+    return { startMs, endMs, label: dayKeyFromDate(selectedDay) };
+  }
+
+  if (rangeMode === "week") {
+    const { startMs, endMs } = localWeekRange(selectedDay);
+    const monday = new Date(startMs);
+    const sunday = new Date(endMs - 1);
+    return {
+      startMs,
+      endMs,
+      label: `${dayKeyFromDate(monday)} ~ ${dayKeyFromDate(sunday)}`,
+    };
+  }
+
+  if (rangeMode === "month") {
+    const { startMs, endMs } = localMonthRange(year, month);
+    return {
+      startMs,
+      endMs,
+      label: `${year}-${String(month).padStart(2, "0")}`,
+    };
+  }
+
+  const { startMs, endMs } = localYearRange(year);
+  return { startMs, endMs, label: String(year) };
+}
 
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"] as const;
 const RANGE_TABS: { id: RangeMode; label: string }[] = [
@@ -181,14 +234,17 @@ function BarChart({
   values,
   labels,
   highlightIndex,
+  onSelectIndex,
 }: {
   values: number[];
   labels: string[];
   highlightIndex?: number | null;
+  onSelectIndex?: (index: number) => void;
 }) {
   const maxVal = Math.max(...values, 0);
   const { scaleMax, ticks } = yAxisScale(maxVal);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const selectable = typeof onSelectIndex === "function";
 
   return (
     <div className="relative mt-6 h-64 w-full overflow-visible">
@@ -224,11 +280,20 @@ function BarChart({
           const active = highlightIndex === i || hoverIndex === i;
           const showTip = hoverIndex === i;
           return (
-            <div
+            <button
               key={i}
-              className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-end"
+              type="button"
+              disabled={!selectable}
+              className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-end disabled:cursor-default"
               onMouseEnter={() => setHoverIndex(i)}
               onMouseLeave={() => setHoverIndex(null)}
+              onClick={() => onSelectIndex?.(i)}
+              aria-pressed={highlightIndex === i}
+              title={
+                selectable
+                  ? `${labels[i]} · ${formatDurationDetailed(ms)}（点击筛选热力图）`
+                  : undefined
+              }
             >
               {showTip ? (
                 <div
@@ -248,7 +313,7 @@ function BarChart({
                   opacity: ms > 0 ? (active ? 1 : 0.85) : 0,
                 }}
               />
-            </div>
+            </button>
           );
         })}
       </div>
@@ -333,6 +398,7 @@ function PageReadingHeatmap({
   pageMarks,
   selectedPage,
   onSelectPage,
+  rangeLabel,
 }: {
   pageMs: number[];
   fileName: string;
@@ -340,6 +406,8 @@ function PageReadingHeatmap({
   pageMarks?: PageMarksMap;
   selectedPage: number | null;
   onSelectPage: (page: number) => void;
+  /** 当前筛选的时间范围文案，如「2026-09-04」 */
+  rangeLabel?: string;
 }) {
   const router = useRouter();
   const maxMs = Math.max(...pageMs, 0);
@@ -360,10 +428,17 @@ function PageReadingHeatmap({
   };
 
   const focusPage = useMemo(() => {
-    if (recentPage >= 1 && recentPage <= totalPages) return recentPage;
+    if (
+      recentPage >= 1 &&
+      recentPage <= totalPages &&
+      (pageMs[recentPage - 1] ?? 0) > 0
+    ) {
+      return recentPage;
+    }
     for (let i = totalPages - 1; i >= 0; i--) {
       if (pageMs[i] > 0) return i + 1;
     }
+    if (recentPage >= 1 && recentPage <= totalPages) return recentPage;
     return 1;
   }, [recentPage, pageMs, totalPages]);
 
@@ -446,6 +521,7 @@ function PageReadingHeatmap({
           <p className="mt-1 text-sm text-[#78716c]">
             共 {totalPages} 页 · 已阅读 {readCount} 页 · 累计{" "}
             {formatDurationDetailed(totalMs)}
+            {rangeLabel ? ` · ${rangeLabel}` : null}
             {canCollapse && !expanded
               ? ` · 显示第 ${showStart}–${showEnd} 页（最近阅读附近）`
               : null}
@@ -686,6 +762,8 @@ export function ActivityDetailClient({
   const [allMonthSessions, setAllMonthSessions] = useState(monthAllSessions);
   const [clearing, setClearing] = useState(false);
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
+  /** 按天视图下选中的小时（0–23）；再次点击取消 */
+  const [selectedHour, setSelectedHour] = useState<number | null>(null);
   const isFileScope = Boolean(fileName?.trim());
 
   const displayedEdits = useMemo(() => {
@@ -706,27 +784,34 @@ export function ActivityDetailClient({
   const chart = useMemo(() => {
     if (rangeMode === "day") {
       const values = hourlyMsForDay(sessions, selectedDay);
+      const total =
+        selectedHour != null && selectedHour >= 0 && selectedHour <= 23
+          ? values[selectedHour] ?? 0
+          : values.reduce((a, b) => a + b, 0);
       return {
         values,
         labels: values.map((_, i) => String(i)),
-        total: values.reduce((a, b) => a + b, 0),
-        highlightIndex: null as number | null,
+        total,
+        highlightIndex: selectedHour,
       };
     }
     if (rangeMode === "week") {
       const values = dailyMsForWeek(sessions, selectedDay);
+      const dow = selectedDay.getDay();
+      const mondayIndex = dow === 0 ? 6 : dow - 1;
       return {
         values,
         labels: [...WEEKDAY_LABELS],
         total: values.reduce((a, b) => a + b, 0),
-        highlightIndex: null as number | null,
+        highlightIndex: mondayIndex,
       };
     }
     if (rangeMode === "month") {
       const values = dailyMsForMonth(sessions, year, month);
       const labels = values.map((_, i) => String(i + 1));
       const highlight =
-        selectedDay.getFullYear() === year && selectedDay.getMonth() + 1 === month
+        selectedDay.getFullYear() === year &&
+        selectedDay.getMonth() + 1 === month
           ? selectedDay.getDate() - 1
           : null;
       return {
@@ -743,7 +828,7 @@ export function ActivityDetailClient({
       total: values.reduce((a, b) => a + b, 0),
       highlightIndex: month - 1,
     };
-  }, [rangeMode, sessions, selectedDay, year, month]);
+  }, [rangeMode, sessions, selectedDay, year, month, selectedHour]);
 
   const monthDaily = useMemo(
     () => dailyMsForMonth(sessions, year, month),
@@ -772,10 +857,27 @@ export function ActivityDetailClient({
     return days.reduce((a, b) => a + b, 0);
   }, [allMonthSessions, year, month]);
 
-  const pageMs = useMemo(
-    () => (isFileScope ? pageMsTotals(sessions, totalPages) : []),
-    [isFileScope, sessions, totalPages],
+  const pageHeatRange = useMemo(
+    () =>
+      resolvePageHeatRange(
+        rangeMode,
+        selectedDay,
+        year,
+        month,
+        selectedHour,
+      ),
+    [rangeMode, selectedDay, year, month, selectedHour],
   );
+
+  const pageMs = useMemo(() => {
+    if (!isFileScope) return [];
+    const clipped = clipSlicesToRange(
+      sessions,
+      pageHeatRange.startMs,
+      pageHeatRange.endMs,
+    );
+    return pageMsTotals(clipped, totalPages);
+  }, [isFileScope, sessions, totalPages, pageHeatRange]);
 
   const sharePct =
     monthAllTotal > 0 ? ((monthFileTotal / monthAllTotal) * 100).toFixed(2) : "0.00";
@@ -866,16 +968,56 @@ export function ActivityDetailClient({
 
   async function selectMonth(nextMonth: number) {
     setMonth(nextMonth);
+    setSelectedHour(null);
     setSelectedDay(new Date(year, nextMonth - 1, Math.min(selectedDay.getDate(), 28)));
     await loadMonthAll(year, nextMonth);
   }
 
   async function selectYear(nextYear: number) {
     setYear(nextYear);
+    setSelectedHour(null);
     setSelectedDay(
       new Date(nextYear, month - 1, Math.min(selectedDay.getDate(), 28)),
     );
     await loadMonthAll(nextYear, month);
+  }
+
+  function onSelectChartBar(index: number) {
+    if (rangeMode === "day") {
+      setSelectedHour((prev) => (prev === index ? null : index));
+      return;
+    }
+    if (rangeMode === "week") {
+      const { startMs } = localWeekRange(selectedDay);
+      const monday = new Date(startMs);
+      const next = new Date(
+        monday.getFullYear(),
+        monday.getMonth(),
+        monday.getDate() + index,
+      );
+      setSelectedDay(next);
+      setYear(next.getFullYear());
+      setMonth(next.getMonth() + 1);
+      setSelectedHour(null);
+      setRangeMode("day");
+      void loadMonthAll(next.getFullYear(), next.getMonth() + 1);
+      return;
+    }
+    if (rangeMode === "month") {
+      const next = new Date(year, month - 1, index + 1);
+      setSelectedDay(next);
+      setSelectedHour(null);
+      setRangeMode("day");
+      return;
+    }
+    const nextMonth = index + 1;
+    setMonth(nextMonth);
+    setSelectedHour(null);
+    setSelectedDay(
+      new Date(year, nextMonth - 1, Math.min(selectedDay.getDate(), 28)),
+    );
+    setRangeMode("month");
+    void loadMonthAll(year, nextMonth);
   }
 
   return (
@@ -893,7 +1035,10 @@ export function ActivityDetailClient({
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setRangeMode(tab.id)}
+                    onClick={() => {
+                      setRangeMode(tab.id);
+                      setSelectedHour(null);
+                    }}
                     className={`relative pb-1 transition-colors ${
                       active ? "font-medium text-[#4f46e5]" : "text-[#78716c] hover:text-[#1c1917]"
                     }`}
@@ -931,6 +1076,7 @@ export function ActivityDetailClient({
                 const [y, m, d] = v.split("-").map(Number);
                 const next = new Date(y, m - 1, d);
                 setSelectedDay(next);
+                setSelectedHour(null);
                 setYear(next.getFullYear());
                 setMonth(next.getMonth() + 1);
                 void loadMonthAll(next.getFullYear(), next.getMonth() + 1);
@@ -950,6 +1096,7 @@ export function ActivityDetailClient({
           values={chart.values}
           labels={chart.labels}
           highlightIndex={chart.highlightIndex}
+          onSelectIndex={onSelectChartBar}
         />
       </section>
 
@@ -1012,6 +1159,7 @@ export function ActivityDetailClient({
             selectedDay={selectedDay}
             onSelectDay={(d) => {
               setSelectedDay(d);
+              setSelectedHour(null);
               setRangeMode("day");
             }}
           />
@@ -1064,6 +1212,7 @@ export function ActivityDetailClient({
             pageMarks={pageMarks}
             selectedPage={selectedPage}
             onSelectPage={setSelectedPage}
+            rangeLabel={pageHeatRange.label}
           />
         </div>
       ) : null}
