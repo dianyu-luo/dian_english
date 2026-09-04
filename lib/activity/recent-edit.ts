@@ -205,7 +205,7 @@ export function mergeRecentEdits(
   annotations: AnnotationEditRow[],
   limit: number,
 ): RecentEditItem[] {
-  const cap = Math.min(Math.max(1, limit), 50);
+  const cap = Math.min(Math.max(1, limit), 500);
   const items: RecentEditItem[] = [
     ...notes.map(fromWordMark),
     ...marks.flatMap((row) => {

@@ -15,8 +15,27 @@ import {
   type DwellSliceWithPage,
 } from "@/lib/activity/aggregate-dwell";
 import { formatDurationMs } from "@/lib/activity/format-duration";
+import { formatRelativeTime } from "@/lib/activity/format-relative-time";
 import type { PageMarksMap } from "@/lib/activity/page-marks-types";
+import {
+  recentEditColor,
+  type RecentEditColor,
+} from "@/lib/activity/recent-edit";
 import { buildPdfHref } from "@/lib/pdf/jump-search";
+
+/** 可序列化传入客户端的最近编辑项 */
+export type RecentEditListItem = {
+  key: string;
+  kind: "note" | "mark" | "annotation";
+  kindLabel: string;
+  type: string;
+  typeLabel: string;
+  title: string;
+  fileName: string;
+  pageNumber: number;
+  updatedAt: string;
+  href: string;
+};
 
 export type ActivityDetailClientProps = {
   /** 指定文件时显示占比；省略则为全部应用总览 */
@@ -30,6 +49,8 @@ export type ActivityDetailClientProps = {
   recentPage?: number;
   /** 各页笔记 / 标注数量 */
   pageMarks?: PageMarksMap;
+  /** 本文件最近编辑（单击格子可按页筛选） */
+  recentEdits?: RecentEditListItem[];
   initialYear: number;
   initialMonth: number;
 };
@@ -57,6 +78,18 @@ const PAGE_HEAT_WINDOW = 100;
 const MARK_NOTE = "#eab308";
 /** 标注角标（批注 / 问题 / 书签 / 待办） */
 const MARK_ANNOTATION = "#ef4444";
+
+const RECENT_EDIT_BADGE: Record<RecentEditColor, string> = {
+  word: "border-[#facc15] bg-[#fef9c3] text-[#854d0e]",
+  question: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]",
+  note: "border-[#cbd5e1] bg-[#f1f5f9] text-[#475569]",
+  bookmark: "border-[#fdba74] bg-[#fff7ed] text-[#c2410c]",
+  todo: "border-[#5eead4] bg-[#f0fdfa] text-[#0f766e]",
+  annotation: "border-[#fca5a5] bg-[#fef2f2] text-[#b91c1c]",
+};
+
+/** 未选页时展示的最近条数 */
+const RECENT_EDIT_DEFAULT_LIMIT = 20;
 
 type PageMarkFilter = "all" | "notes" | "annotations";
 
@@ -298,11 +331,15 @@ function PageReadingHeatmap({
   fileName,
   recentPage = 0,
   pageMarks,
+  selectedPage,
+  onSelectPage,
 }: {
   pageMs: number[];
   fileName: string;
   recentPage?: number;
   pageMarks?: PageMarksMap;
+  selectedPage: number | null;
+  onSelectPage: (page: number) => void;
 }) {
   const router = useRouter();
   const maxMs = Math.max(...pageMs, 0);
@@ -315,6 +352,11 @@ function PageReadingHeatmap({
 
   const openPage = (page: number) => {
     router.push(buildPdfHref({ fileName, pageNumber: page }));
+  };
+
+  const selectPage = (page: number) => {
+    setHoverPage(page);
+    onSelectPage(page);
   };
 
   const focusPage = useMemo(() => {
@@ -375,7 +417,7 @@ function PageReadingHeatmap({
     [visiblePages],
   );
 
-  const activePage = hoverPage ?? focusPage;
+  const activePage = hoverPage ?? selectedPage ?? focusPage;
   const activeMarks = pageMarkOf(pageMarks, activePage);
   const activeMs = pageMs[activePage - 1] ?? 0;
 
@@ -478,6 +520,7 @@ function PageReadingHeatmap({
               const intensity =
                 ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
               const isHover = hoverPage === page;
+              const isSelected = selectedPage === page;
               const isFocus = page === focusPage;
               return (
                 <button
@@ -487,10 +530,11 @@ function PageReadingHeatmap({
                   style={{ opacity: matched ? 1 : 0.16 }}
                   onMouseEnter={() => setHoverPage(page)}
                   onFocus={() => setHoverPage(page)}
-                  onClick={() => setHoverPage(page)}
+                  onClick={() => selectPage(page)}
                   onDoubleClick={() => openPage(page)}
-                  title={`第 ${page} 页 · 双击打开`}
-                  aria-label={`第 ${page} 页，双击打开`}
+                  title={`第 ${page} 页 · 单击查看编辑 · 双击打开`}
+                  aria-label={`第 ${page} 页，单击查看编辑，双击打开`}
+                  aria-pressed={isSelected}
                 >
                   <div
                     className="relative aspect-square overflow-hidden rounded-sm transition-shadow hover:brightness-95"
@@ -500,7 +544,7 @@ function PageReadingHeatmap({
                           ? `rgba(${PAGE_HEAT_RGB}, ${intensity})`
                           : PAGE_HEAT_EMPTY,
                       boxShadow:
-                        isHover || isFocus
+                        isHover || isSelected || isFocus
                           ? `inset 0 0 0 2px rgb(${PAGE_HEAT_RGB})`
                           : undefined,
                     }}
@@ -563,7 +607,9 @@ function PageReadingHeatmap({
               ) : null}
             </div>
           )}
-          <p className="mt-1 text-[11px] text-[#a8a29e]">双击格子打开该页</p>
+          <p className="mt-1 text-[11px] text-[#a8a29e]">
+            单击查看该页编辑 · 双击打开
+          </p>
           <Link
             href={buildPdfHref({ fileName, pageNumber: activePage })}
             className="mt-3 inline-block text-sm text-[#1c1917] underline underline-offset-4"
@@ -584,9 +630,9 @@ function PageReadingHeatmap({
                     key={p.page}
                     type="button"
                     onMouseEnter={() => setHoverPage(p.page)}
-                    onClick={() => setHoverPage(p.page)}
+                    onClick={() => selectPage(p.page)}
                     onDoubleClick={() => openPage(p.page)}
-                    title={`第 ${p.page} 页 · 双击打开`}
+                    title={`第 ${p.page} 页 · 单击查看编辑 · 双击打开`}
                     className={`inline-flex items-center gap-1 text-sm tabular-nums underline-offset-2 hover:underline ${
                       p.page === activePage
                         ? "font-medium text-[#1c1917]"
@@ -624,6 +670,7 @@ export function ActivityDetailClient({
   totalPages = 0,
   recentPage = 0,
   pageMarks,
+  recentEdits = [],
   initialYear,
   initialMonth,
 }: ActivityDetailClientProps) {
@@ -637,7 +684,15 @@ export function ActivityDetailClient({
   const [sessions, setSessions] = useState(fileSessions);
   const [allMonthSessions, setAllMonthSessions] = useState(monthAllSessions);
   const [clearing, setClearing] = useState(false);
+  const [selectedPage, setSelectedPage] = useState<number | null>(null);
   const isFileScope = Boolean(fileName?.trim());
+
+  const displayedEdits = useMemo(() => {
+    if (selectedPage == null) {
+      return recentEdits.slice(0, RECENT_EDIT_DEFAULT_LIMIT);
+    }
+    return recentEdits.filter((item) => item.pageNumber === selectedPage);
+  }, [recentEdits, selectedPage]);
 
   useEffect(() => {
     setSessions(fileSessions);
@@ -823,6 +878,7 @@ export function ActivityDetailClient({
   }
 
   return (
+    <>
     <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       {/* 左侧：时长统计 */}
       <section className="rounded-2xl border border-[#e7e2d9] bg-white px-5 py-5 shadow-sm sm:px-6">
@@ -1005,9 +1061,83 @@ export function ActivityDetailClient({
             fileName={fileName}
             recentPage={recentPage}
             pageMarks={pageMarks}
+            selectedPage={selectedPage}
+            onSelectPage={setSelectedPage}
           />
         </div>
       ) : null}
     </div>
+
+    {isFileScope ? (
+      <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-medium">
+              {selectedPage != null
+                ? `第 ${selectedPage} 页编辑内容`
+                : "最近编辑内容"}
+            </h2>
+            {selectedPage != null ? (
+              <p className="mt-1 text-sm text-[#78716c]">
+                来自上方热力图选中的页
+              </p>
+            ) : null}
+          </div>
+          {selectedPage != null ? (
+            <button
+              type="button"
+              onClick={() => setSelectedPage(null)}
+              className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] px-3 py-1.5 text-sm text-[#3f3f46] hover:bg-[#f4f4f5]"
+            >
+              显示全部最近编辑
+            </button>
+          ) : null}
+        </div>
+        {displayedEdits.length === 0 ? (
+          <p className="text-sm leading-6 text-[#78716c]">
+            {selectedPage != null
+              ? "本页暂无笔记、标记或批注。"
+              : "本文件暂无笔记、标记或批注。"}
+          </p>
+        ) : (
+          <div className="border-y border-[#e7e2d9]">
+            <div className="hidden grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] gap-4 border-b border-[#e7e2d9] py-2 text-xs text-[#78716c] sm:grid">
+              <span>内容</span>
+              <span className="text-right">类型</span>
+              <span className="text-right">最近更新</span>
+            </div>
+            <ul className="divide-y divide-[#e7e2d9]">
+              {displayedEdits.map((item) => {
+                const time = formatRelativeTime(item.updatedAt);
+                return (
+                  <li key={item.key}>
+                    <Link
+                      href={item.href}
+                      className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] sm:items-center sm:gap-4"
+                    >
+                      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]">
+                        {item.title}
+                      </span>
+                      <span className="sm:flex sm:justify-end">
+                        <span
+                          className={`inline-flex whitespace-nowrap border px-1.5 py-0.5 text-xs ${RECENT_EDIT_BADGE[recentEditColor(item)]}`}
+                        >
+                          {item.kindLabel} · {item.typeLabel}
+                        </span>
+                      </span>
+                      <span className="whitespace-nowrap text-xs text-[#a8a29e] sm:text-right">
+                        第 {item.pageNumber} 页
+                        {time ? ` · ${time}` : ""}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </section>
+    ) : null}
+    </>
   );
 }
