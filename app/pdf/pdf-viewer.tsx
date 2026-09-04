@@ -712,7 +712,10 @@ export default function PdfViewer({
         setFileName(item.fileName);
         setPageNumber(targetPage);
         setScale(clampScale(item.scale ?? 1));
-        onRecentChangeRef.current?.(item);
+        onRecentChangeRef.current?.({
+          ...item,
+          pageNumber: targetPage,
+        });
       } catch {
         onRecentChangeRef.current?.(null);
       } finally {
@@ -769,7 +772,10 @@ export default function PdfViewer({
           setNumPages(0);
           setScale(clampScale(item.scale ?? 1));
           setError(null);
-          onRecentChangeRef.current?.(item);
+          onRecentChangeRef.current?.({
+            ...item,
+            pageNumber: jumpRequest.pageNumber,
+          });
         } else {
           skipPersistRef.current = true;
           setPageNumber(jumpRequest.pageNumber);
@@ -777,6 +783,12 @@ export default function PdfViewer({
             pendingScrollPageRef.current = jumpRequest.pageNumber;
           }
           setError(null);
+          onRecentChangeRef.current?.({
+            fileName: fileNameRef.current,
+            pageNumber: jumpRequest.pageNumber,
+            scale: clampScale(scale),
+            url: typeof file === "string" ? file : "",
+          });
         }
 
         const rects =
