@@ -91,6 +91,8 @@ export const pageDwellSessions = sqliteTable("page_dwell_sessions", {
   pagePath: text("page_path").notNull(),
   /** 可选资源标识，如 PDF fileName */
   resourceKey: text("resource_key"),
+  /** 可选页码，如 PDF 当前页 */
+  pageNumber: integer("page_number"),
   startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
   endedAt: integer("ended_at", { mode: "timestamp_ms" }),
   durationMs: integer("duration_ms").notNull().default(0),

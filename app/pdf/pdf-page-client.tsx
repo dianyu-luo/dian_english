@@ -185,6 +185,7 @@ export default function PdfPageClient({
   usePageDwell({
     pagePath: "/pdf",
     resourceKey: recent?.fileName ?? null,
+    pageNumber: recent?.pageNumber ?? null,
     enabled: !paused,
   });
 

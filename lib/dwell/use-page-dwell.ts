@@ -13,6 +13,7 @@ type DwellPayload = {
   clientSessionId: string;
   pagePath: string;
   resourceKey: string | null;
+  pageNumber: number | null;
   startedAt: number;
   endedAt: number | null;
   durationMs: number;
@@ -21,6 +22,8 @@ type DwellPayload = {
 type Options = {
   pagePath: string;
   resourceKey?: string | null;
+  /** PDF 当前页；变化时结束上一段并新开一段 */
+  pageNumber?: number | null;
   /** 为 false 时不采集 */
   enabled?: boolean;
   /** 失焦拆段阈值；小于该间隔切回则视作未切换，默认 3 分钟 */
@@ -65,6 +68,7 @@ function persist(payload: DwellPayload, keepalive = false) {
 export function usePageDwell({
   pagePath,
   resourceKey = null,
+  pageNumber = null,
   enabled = true,
   gapMs = DWELL_FOCUS_GAP_MS,
   heartbeatMs = 30_000,
@@ -79,6 +83,10 @@ export function usePageDwell({
     if (!enabled || !pagePath) return;
 
     const resolvedKey = resourceKey ?? null;
+    const resolvedPage =
+      typeof pageNumber === "number" && Number.isFinite(pageNumber) && pageNumber >= 1
+        ? Math.floor(pageNumber)
+        : null;
     // /pdf 未打开文件时不计时、不落库
     if (pagePath === "/pdf" && resolvedKey == null) return;
     let clientSessionId = "";
@@ -95,6 +103,7 @@ export function usePageDwell({
         clientSessionId,
         pagePath,
         resourceKey: resolvedKey,
+        pageNumber: resolvedPage,
         startedAt,
         endedAt,
         durationMs: Math.max(0, end - startedAt),
@@ -280,5 +289,5 @@ export function usePageDwell({
       const at = decision.idle ? decision.endedAt : (blurredAt ?? Date.now());
       endSession(at, true);
     };
-  }, [enabled, pagePath, resourceKey, heartbeatMs]);
+  }, [enabled, pagePath, resourceKey, pageNumber, heartbeatMs]);
 }

@@ -7,6 +7,7 @@ type SaveBody = {
   clientSessionId?: string;
   pagePath?: string;
   resourceKey?: string | null;
+  pageNumber?: number | null;
   startedAt?: number;
   endedAt?: number | null;
   durationMs?: number;
@@ -26,6 +27,7 @@ function serialize(row: typeof pageDwellSessions.$inferSelect) {
     clientSessionId: row.clientSessionId,
     pagePath: row.pagePath,
     resourceKey: row.resourceKey,
+    pageNumber: row.pageNumber,
     startedAt: row.startedAt,
     endedAt: row.endedAt,
     durationMs: row.durationMs,
@@ -88,6 +90,10 @@ export async function POST(request: Request) {
   const durationMs = body.durationMs;
   const resourceKey =
     typeof body.resourceKey === "string" ? body.resourceKey.trim() || null : null;
+  const pageNumber =
+    isFiniteNumber(body.pageNumber) && body.pageNumber >= 1
+      ? Math.floor(body.pageNumber)
+      : null;
 
   if (
     !clientSessionId ||
@@ -125,6 +131,7 @@ export async function POST(request: Request) {
       .set({
         pagePath,
         resourceKey,
+        pageNumber,
         startedAt: startedAtDate,
         endedAt: endedAtDate,
         durationMs: Math.round(durationMs),
@@ -141,6 +148,7 @@ export async function POST(request: Request) {
       clientSessionId,
       pagePath,
       resourceKey,
+      pageNumber,
       startedAt: startedAtDate,
       endedAt: endedAtDate,
       durationMs: Math.round(durationMs),
