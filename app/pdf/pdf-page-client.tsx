@@ -350,6 +350,18 @@ export default function PdfPageClient({
                 返回 PDF
               </Link>
             ) : null}
+            {recent ? (
+              <Link
+                href={`/activity/detail?fileName=${encodeURIComponent(recent.fileName)}`}
+                className="text-sm text-[#78716c] hover:text-[#1c1917]"
+              >
+                浏览数据
+              </Link>
+            ) : (
+              <span className="text-sm text-[#a8a29e]" title="打开 PDF 后可查看">
+                浏览数据
+              </span>
+            )}
             <Link href="/" className="text-sm text-[#78716c] hover:text-[#1c1917]">
               返回首页
             </Link>
