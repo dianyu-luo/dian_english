@@ -41,7 +41,7 @@ export default async function ActivityDetailPage({
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
       <SiteHeader />
 
-      <main className="mx-auto w-full max-w-6xl px-6 py-10">
+      <main className="mx-auto w-full max-w-6xl px-6 pt-10 pb-[50vh]">
         <section className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">详细数据</h1>
           {fileName ? (
