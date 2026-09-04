@@ -10,16 +10,19 @@ import {
   hourlyMsForDay,
   isSameLocalDay,
   monthlyMsForYear,
-  type DwellSlice,
+  pageMsTotals,
+  type DwellSliceWithPage,
 } from "@/lib/activity/aggregate-dwell";
 import { formatDurationMs } from "@/lib/activity/format-duration";
 
 export type ActivityDetailClientProps = {
   /** 指定文件时显示占比；省略则为全部应用总览 */
   fileName?: string;
-  fileSessions: DwellSlice[];
+  fileSessions: DwellSliceWithPage[];
   /** 当前所选月份内全部应用的停留（占比分母）；总览模式下可与 fileSessions 相同 */
-  monthAllSessions: DwellSlice[];
+  monthAllSessions: DwellSliceWithPage[];
+  /** PDF 总页数；用于页码热力图范围 */
+  totalPages?: number;
   initialYear: number;
   initialMonth: number;
 };
@@ -37,6 +40,10 @@ const RANGE_TABS: { id: RangeMode; label: string }[] = [
 const ACCENT = "#4f46e5";
 const ACCENT_SOFT = "#eef2ff";
 const ACCENT_MUTED = "#c7d2fe";
+/** 页码阅读热力图：绿色深度表示停留时长 */
+const PAGE_HEAT_RGB = "22, 163, 74";
+const PAGE_HEAT_EMPTY = "#f4f4f5";
+const PAGE_HEAT_COLS = 20;
 
 function CalendarIcon({ className }: { className?: string }) {
   return (
@@ -240,10 +247,105 @@ function Heatmap({
   );
 }
 
+function PageReadingHeatmap({
+  pageMs,
+}: {
+  pageMs: number[];
+}) {
+  const maxMs = Math.max(...pageMs, 0);
+  const [hoverPage, setHoverPage] = useState<number | null>(null);
+  const readCount = pageMs.filter((ms) => ms > 0).length;
+  const totalMs = pageMs.reduce((a, b) => a + b, 0);
+
+  if (pageMs.length === 0) {
+    return (
+      <section className="rounded-2xl border border-[#e7e2d9] bg-white px-5 py-5 shadow-sm sm:px-6">
+        <h2 className="text-xl font-semibold tracking-tight">页码阅读热力图</h2>
+        <p className="mt-3 text-sm leading-6 text-[#78716c]">
+          暂无带页码的阅读记录。打开 PDF 阅读超过 3 秒后会出现在这里。
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-[#e7e2d9] bg-white px-5 py-5 shadow-sm sm:px-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">页码阅读热力图</h2>
+          <p className="mt-1 text-sm text-[#78716c]">
+            共 {pageMs.length} 页 · 已阅读 {readCount} 页 · 累计{" "}
+            {formatDurationDetailed(totalMs)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-[#78716c]">
+          <span>少</span>
+          <div className="flex gap-0.5">
+            {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+              <span
+                key={t}
+                className="h-3 w-3 rounded-sm"
+                style={{
+                  backgroundColor:
+                    t === 0
+                      ? PAGE_HEAT_EMPTY
+                      : `rgba(${PAGE_HEAT_RGB}, ${0.18 + 0.82 * t})`,
+                }}
+              />
+            ))}
+          </div>
+          <span>多</span>
+        </div>
+      </div>
+
+      <div
+        className="mt-5 grid gap-1"
+        style={{
+          gridTemplateColumns: `repeat(${Math.min(PAGE_HEAT_COLS, pageMs.length)}, minmax(0, 1fr))`,
+        }}
+      >
+        {pageMs.map((ms, i) => {
+          const page = i + 1;
+          const intensity = ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
+          const active = hoverPage === page;
+          return (
+            <div
+              key={page}
+              className="relative"
+              onMouseEnter={() => setHoverPage(page)}
+              onMouseLeave={() => setHoverPage(null)}
+            >
+              {active ? (
+                <div className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#18181b] px-2 py-1 text-[11px] text-white shadow-sm">
+                  第 {page} 页 · {formatDurationDetailed(ms)}
+                </div>
+              ) : null}
+              <div
+                className="aspect-square rounded-sm transition-shadow"
+                title={`第 ${page} 页 · ${formatDurationDetailed(ms)}`}
+                style={{
+                  backgroundColor:
+                    ms > 0
+                      ? `rgba(${PAGE_HEAT_RGB}, ${intensity})`
+                      : PAGE_HEAT_EMPTY,
+                  boxShadow: active
+                    ? `inset 0 0 0 2px rgb(${PAGE_HEAT_RGB})`
+                    : undefined,
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function ActivityDetailClient({
   fileName,
   fileSessions,
   monthAllSessions,
+  totalPages = 0,
   initialYear,
   initialMonth,
 }: ActivityDetailClientProps) {
@@ -335,6 +437,11 @@ export function ActivityDetailClient({
     const days = dailyMsForMonth(allMonthSessions, year, month);
     return days.reduce((a, b) => a + b, 0);
   }, [allMonthSessions, year, month]);
+
+  const pageMs = useMemo(
+    () => (isFileScope ? pageMsTotals(sessions, totalPages) : []),
+    [isFileScope, sessions, totalPages],
+  );
 
   const sharePct =
     monthAllTotal > 0 ? ((monthFileTotal / monthAllTotal) * 100).toFixed(2) : "0.00";
@@ -612,6 +719,12 @@ export function ActivityDetailClient({
           </div>
         </div>
       </section>
+
+      {isFileScope ? (
+        <div className="lg:col-span-2">
+          <PageReadingHeatmap pageMs={pageMs} />
+        </div>
+      ) : null}
     </div>
   );
 }

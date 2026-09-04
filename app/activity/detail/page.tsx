@@ -4,6 +4,7 @@ import { ActivityDetailClient } from "./activity-detail-client";
 import { formatRelativeTime } from "@/lib/activity/format-relative-time";
 import {
   getFileDwellSessions,
+  getFileTotalPages,
   getMonthAllDwellSlices,
 } from "@/lib/activity/file-dwell";
 import {
@@ -39,13 +40,14 @@ export default async function ActivityDetailPage({
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  const [fileSessions, monthAllSessions, recentEdits] = fileName
+  const [fileSessions, monthAllSessions, recentEdits, totalPages] = fileName
     ? await Promise.all([
         getFileDwellSessions(fileName),
         getMonthAllDwellSlices(year, month),
         getRecentEdits(20, fileName),
+        getFileTotalPages(fileName),
       ])
-    : [[], [], []];
+    : [[], [], [], 0];
 
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
@@ -72,8 +74,10 @@ export default async function ActivityDetailPage({
               fileSessions={fileSessions.map((s) => ({
                 startedAt: s.startedAt,
                 durationMs: s.durationMs,
+                pageNumber: s.pageNumber,
               }))}
               monthAllSessions={monthAllSessions}
+              totalPages={totalPages}
               initialYear={year}
               initialMonth={month}
             />

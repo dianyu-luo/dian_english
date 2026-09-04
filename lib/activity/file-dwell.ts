@@ -2,12 +2,13 @@ import "server-only";
 
 import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { pageDwellSessions } from "@/lib/db/schema";
+import { pageDwellSessions, pdfRecentReads } from "@/lib/db/schema";
 import type { DwellSlice } from "@/lib/activity/aggregate-dwell";
 
 export type FileDwellSession = DwellSlice & {
   id: number;
   resourceKey: string | null;
+  pageNumber: number | null;
 };
 
 function toMs(value: Date | number): number {
@@ -18,6 +19,7 @@ function mapSessionRows(
   rows: {
     id: number;
     resourceKey: string | null;
+    pageNumber: number | null;
     startedAt: Date | number;
     durationMs: number;
   }[],
@@ -25,6 +27,7 @@ function mapSessionRows(
   return rows.map((row) => ({
     id: row.id,
     resourceKey: row.resourceKey,
+    pageNumber: row.pageNumber,
     startedAt: toMs(row.startedAt),
     durationMs: Math.max(0, row.durationMs),
   }));
@@ -36,6 +39,7 @@ export async function getAllDwellSessions(): Promise<FileDwellSession[]> {
     .select({
       id: pageDwellSessions.id,
       resourceKey: pageDwellSessions.resourceKey,
+      pageNumber: pageDwellSessions.pageNumber,
       startedAt: pageDwellSessions.startedAt,
       durationMs: pageDwellSessions.durationMs,
     })
@@ -56,6 +60,7 @@ export async function getFileDwellSessions(
     .select({
       id: pageDwellSessions.id,
       resourceKey: pageDwellSessions.resourceKey,
+      pageNumber: pageDwellSessions.pageNumber,
       startedAt: pageDwellSessions.startedAt,
       durationMs: pageDwellSessions.durationMs,
     })
@@ -64,6 +69,21 @@ export async function getFileDwellSessions(
     .orderBy(pageDwellSessions.startedAt);
 
   return mapSessionRows(rows);
+}
+
+/** 某文件 PDF 总页数（来自最近阅读；未知则为 0） */
+export async function getFileTotalPages(fileName: string): Promise<number> {
+  const name = fileName.trim();
+  if (!name) return 0;
+
+  const [row] = await db
+    .select({ totalNumber: pdfRecentReads.totalNumber })
+    .from(pdfRecentReads)
+    .where(eq(pdfRecentReads.fileName, name))
+    .limit(1);
+
+  const n = row?.totalNumber ?? 0;
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 0;
 }
 
 /**

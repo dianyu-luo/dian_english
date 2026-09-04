@@ -4,6 +4,36 @@ export type DwellSlice = {
   durationMs: number;
 };
 
+/** 带可选页码的停留（用于页码热力图） */
+export type DwellSliceWithPage = DwellSlice & {
+  pageNumber?: number | null;
+};
+
+/**
+ * 按页码汇总停留时长。
+ * pageCount 已知时返回 1..pageCount；未知时按出现过的最大页码。
+ */
+export function pageMsTotals(
+  slices: DwellSliceWithPage[],
+  pageCount = 0,
+): number[] {
+  let maxPage = Math.max(0, Math.floor(pageCount));
+  const byPage = new Map<number, number>();
+
+  for (const slice of slices) {
+    const page = slice.pageNumber;
+    if (typeof page !== "number" || !Number.isFinite(page) || page < 1) continue;
+    const p = Math.floor(page);
+    const ms = Math.max(0, Math.round(slice.durationMs));
+    if (!Number.isFinite(ms) || ms <= 0) continue;
+    byPage.set(p, (byPage.get(p) ?? 0) + ms);
+    if (p > maxPage) maxPage = p;
+  }
+
+  if (maxPage < 1) return [];
+  return Array.from({ length: maxPage }, (_, i) => byPage.get(i + 1) ?? 0);
+}
+
 function toTime(value: number | Date): number {
   return value instanceof Date ? value.getTime() : value;
 }
