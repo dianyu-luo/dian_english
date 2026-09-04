@@ -577,16 +577,17 @@ function PageReadingHeatmap({
           <p className="mt-1 text-3xl font-medium tabular-nums tracking-tight text-[#1c1917]">
             {activePage}
           </p>
-          <p className="mt-2 text-sm leading-6 text-[#57534e]">
-            {activeMs > 0
-              ? `阅读 ${formatDurationDetailed(activeMs)}`
-              : "尚无阅读时长"}
-            {activePage === focusPage ? (
-              <span className="text-[#a8a29e]"> · 最近</span>
-            ) : null}
-          </p>
-          {(activeMarks.notes > 0 || activeMarks.annotations > 0) && (
-            <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#57534e]">
+          {/* 固定两行高度：阅读时长 + 笔记/标注，悬停切换时不撑布局 */}
+          <div className="mt-2 h-11 text-sm leading-5 text-[#57534e]">
+            <p className="truncate">
+              {activeMs > 0
+                ? `阅读 ${formatDurationDetailed(activeMs)}`
+                : "尚无阅读时长"}
+              {activePage === focusPage ? (
+                <span className="text-[#a8a29e]"> · 最近</span>
+              ) : null}
+            </p>
+            <p className="mt-1 flex h-5 items-center gap-2 text-xs">
               {activeMarks.notes > 0 ? (
                 <span className="inline-flex items-center gap-1.5">
                   <span
@@ -605,8 +606,8 @@ function PageReadingHeatmap({
                   标注 {activeMarks.annotations}
                 </span>
               ) : null}
-            </div>
-          )}
+            </p>
+          </div>
           <p className="mt-1 text-[11px] text-[#a8a29e]">
             单击查看该页编辑 · 双击打开
           </p>
