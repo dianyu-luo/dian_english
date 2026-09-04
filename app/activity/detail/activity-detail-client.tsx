@@ -304,6 +304,7 @@ function PageReadingHeatmap({
   recentPage?: number;
   pageMarks?: PageMarksMap;
 }) {
+  const router = useRouter();
   const maxMs = Math.max(...pageMs, 0);
   const [hoverPage, setHoverPage] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -311,6 +312,10 @@ function PageReadingHeatmap({
   const readCount = pageMs.filter((ms) => ms > 0).length;
   const totalMs = pageMs.reduce((a, b) => a + b, 0);
   const totalPages = pageMs.length;
+
+  const openPage = (page: number) => {
+    router.push(buildPdfHref({ fileName, pageNumber: page }));
+  };
 
   const focusPage = useMemo(() => {
     if (recentPage >= 1 && recentPage <= totalPages) return recentPage;
@@ -474,17 +479,18 @@ function PageReadingHeatmap({
                 ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
               const isHover = hoverPage === page;
               const isFocus = page === focusPage;
-              const href = buildPdfHref({ fileName, pageNumber: page });
               return (
-                <Link
+                <button
                   key={page}
-                  href={href}
-                  className="relative block outline-none transition-opacity"
+                  type="button"
+                  className="relative block w-full cursor-pointer outline-none transition-opacity"
                   style={{ opacity: matched ? 1 : 0.16 }}
                   onMouseEnter={() => setHoverPage(page)}
                   onFocus={() => setHoverPage(page)}
-                  title={`第 ${page} 页`}
-                  aria-label={`跳转到第 ${page} 页`}
+                  onClick={() => setHoverPage(page)}
+                  onDoubleClick={() => openPage(page)}
+                  title={`第 ${page} 页 · 双击打开`}
+                  aria-label={`第 ${page} 页，双击打开`}
                 >
                   <div
                     className="relative aspect-square overflow-hidden rounded-sm transition-shadow hover:brightness-95"
@@ -516,7 +522,7 @@ function PageReadingHeatmap({
                       </span>
                     )}
                   </div>
-                </Link>
+                </button>
               );
             })}
           </div>
@@ -557,9 +563,10 @@ function PageReadingHeatmap({
               ) : null}
             </div>
           )}
+          <p className="mt-1 text-[11px] text-[#a8a29e]">双击格子打开该页</p>
           <Link
             href={buildPdfHref({ fileName, pageNumber: activePage })}
-            className="mt-4 inline-block text-sm text-[#1c1917] underline underline-offset-4"
+            className="mt-3 inline-block text-sm text-[#1c1917] underline underline-offset-4"
           >
             打开第 {activePage} 页
           </Link>
@@ -573,10 +580,13 @@ function PageReadingHeatmap({
             ) : (
               <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1.5">
                 {markedInView.map((p) => (
-                  <Link
+                  <button
                     key={p.page}
-                    href={buildPdfHref({ fileName, pageNumber: p.page })}
+                    type="button"
                     onMouseEnter={() => setHoverPage(p.page)}
+                    onClick={() => setHoverPage(p.page)}
+                    onDoubleClick={() => openPage(p.page)}
+                    title={`第 ${p.page} 页 · 双击打开`}
                     className={`inline-flex items-center gap-1 text-sm tabular-nums underline-offset-2 hover:underline ${
                       p.page === activePage
                         ? "font-medium text-[#1c1917]"
@@ -596,7 +606,7 @@ function PageReadingHeatmap({
                         style={{ backgroundColor: MARK_ANNOTATION }}
                       />
                     ) : null}
-                  </Link>
+                  </button>
                 ))}
               </div>
             )}
