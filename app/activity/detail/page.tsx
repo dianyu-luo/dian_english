@@ -7,6 +7,7 @@ import {
   getFilePdfMeta,
   getMonthAllDwellSlices,
 } from "@/lib/activity/file-dwell";
+import { getFilePageMarks } from "@/lib/activity/page-marks";
 import {
   recentEditColor,
   type RecentEditColor,
@@ -40,14 +41,16 @@ export default async function ActivityDetailPage({
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  const [fileSessions, monthAllSessions, recentEdits, pdfMeta] = fileName
-    ? await Promise.all([
-        getFileDwellSessions(fileName),
-        getMonthAllDwellSlices(year, month),
-        getRecentEdits(20, fileName),
-        getFilePdfMeta(fileName),
-      ])
-    : [[], [], [], { totalPages: 0, recentPage: 0 }];
+  const [fileSessions, monthAllSessions, recentEdits, pdfMeta, pageMarks] =
+    fileName
+      ? await Promise.all([
+          getFileDwellSessions(fileName),
+          getMonthAllDwellSlices(year, month),
+          getRecentEdits(20, fileName),
+          getFilePdfMeta(fileName),
+          getFilePageMarks(fileName),
+        ])
+      : [[], [], [], { totalPages: 0, recentPage: 0 }, {}];
 
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
@@ -79,6 +82,7 @@ export default async function ActivityDetailPage({
               monthAllSessions={monthAllSessions}
               totalPages={pdfMeta.totalPages}
               recentPage={pdfMeta.recentPage}
+              pageMarks={pageMarks}
               initialYear={year}
               initialMonth={month}
             />

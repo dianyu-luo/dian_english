@@ -15,6 +15,7 @@ import {
   type DwellSliceWithPage,
 } from "@/lib/activity/aggregate-dwell";
 import { formatDurationMs } from "@/lib/activity/format-duration";
+import type { PageMarksMap } from "@/lib/activity/page-marks-types";
 import { buildPdfHref } from "@/lib/pdf/jump-search";
 
 export type ActivityDetailClientProps = {
@@ -27,6 +28,8 @@ export type ActivityDetailClientProps = {
   totalPages?: number;
   /** 最近阅读页码；折叠时以附近 100 页为窗口 */
   recentPage?: number;
+  /** 各页笔记 / 标注数量 */
+  pageMarks?: PageMarksMap;
   initialYear: number;
   initialMonth: number;
 };
@@ -50,6 +53,22 @@ const PAGE_HEAT_EMPTY = "#f4f4f5";
 const PAGE_HEAT_COLS = 20;
 /** 折叠时只展示最近阅读附近的页数 */
 const PAGE_HEAT_WINDOW = 100;
+/** 笔记角标 */
+const MARK_NOTE = "#eab308";
+/** 标注角标（批注 / 问题 / 书签 / 待办） */
+const MARK_ANNOTATION = "#ef4444";
+
+function pageMarkOf(
+  pageMarks: PageMarksMap | undefined,
+  page: number,
+): { notes: number; annotations: number } {
+  const raw = pageMarks?.[page];
+  if (!raw) return { notes: 0, annotations: 0 };
+  return {
+    notes: Math.max(0, raw.notes || 0),
+    annotations: Math.max(0, raw.annotations || 0),
+  };
+}
 
 function pageHeatWindow(
   totalPages: number,
@@ -276,10 +295,12 @@ function PageReadingHeatmap({
   pageMs,
   fileName,
   recentPage = 0,
+  pageMarks,
 }: {
   pageMs: number[];
   fileName: string;
   recentPage?: number;
+  pageMarks?: PageMarksMap;
 }) {
   const maxMs = Math.max(...pageMs, 0);
   const [hoverPage, setHoverPage] = useState<number | null>(null);
@@ -312,6 +333,17 @@ function PageReadingHeatmap({
     return list;
   }, [pageMs, showStart, showEnd]);
 
+  const markStats = useMemo(() => {
+    let notePages = 0;
+    let annotationPages = 0;
+    if (!pageMarks) return { notePages, annotationPages };
+    for (const counts of Object.values(pageMarks)) {
+      if (counts.notes > 0) notePages += 1;
+      if (counts.annotations > 0) annotationPages += 1;
+    }
+    return { notePages, annotationPages };
+  }, [pageMarks]);
+
   if (pageMs.length === 0) {
     return (
       <section className="rounded-2xl border border-[#e7e2d9] bg-white px-5 py-5 shadow-sm sm:px-6">
@@ -337,23 +369,43 @@ function PageReadingHeatmap({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 text-[11px] text-[#78716c]">
-            <span>少</span>
-            <div className="flex gap-0.5">
-              {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-                <span
-                  key={t}
-                  className="h-3 w-3 rounded-sm"
-                  style={{
-                    backgroundColor:
-                      t === 0
-                        ? PAGE_HEAT_EMPTY
-                        : `rgba(${PAGE_HEAT_RGB}, ${0.18 + 0.82 * t})`,
-                  }}
-                />
-              ))}
-            </div>
-            <span>多</span>
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#78716c]">
+            <span className="inline-flex items-center gap-1.5">
+              <span>少</span>
+              <span className="flex gap-0.5">
+                {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                  <span
+                    key={t}
+                    className="h-3 w-3 rounded-sm"
+                    style={{
+                      backgroundColor:
+                        t === 0
+                          ? PAGE_HEAT_EMPTY
+                          : `rgba(${PAGE_HEAT_RGB}, ${0.18 + 0.82 * t})`,
+                    }}
+                  />
+                ))}
+              </span>
+              <span>多</span>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: MARK_NOTE }}
+              />
+              笔记
+              {markStats.notePages > 0 ? ` ${markStats.notePages}` : ""}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: MARK_ANNOTATION }}
+              />
+              标注
+              {markStats.annotationPages > 0
+                ? ` ${markStats.annotationPages}`
+                : ""}
+            </span>
           </div>
           {canCollapse ? (
             <button
@@ -378,7 +430,15 @@ function PageReadingHeatmap({
             ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
           const active = hoverPage === page;
           const isFocus = page === focusPage;
+          const marks = pageMarkOf(pageMarks, page);
           const href = buildPdfHref({ fileName, pageNumber: page });
+          const tipParts = [
+            `第 ${page} 页`,
+            formatDurationDetailed(ms),
+            marks.notes > 0 ? `笔记 ${marks.notes}` : "",
+            marks.annotations > 0 ? `标注 ${marks.annotations}` : "",
+            isFocus ? "最近阅读" : "",
+          ].filter(Boolean);
           return (
             <Link
               key={page}
@@ -386,17 +446,16 @@ function PageReadingHeatmap({
               className="relative block"
               onMouseEnter={() => setHoverPage(page)}
               onMouseLeave={() => setHoverPage(null)}
-              title={`跳转到第 ${page} 页 · ${formatDurationDetailed(ms)}`}
+              title={tipParts.join(" · ")}
               aria-label={`跳转到第 ${page} 页`}
             >
               {active ? (
                 <div className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#18181b] px-2 py-1 text-[11px] text-white shadow-sm">
-                  第 {page} 页 · {formatDurationDetailed(ms)}
-                  {isFocus ? " · 最近阅读" : ""}
+                  {tipParts.join(" · ")}
                 </div>
               ) : null}
               <div
-                className="aspect-square rounded-sm transition-shadow hover:brightness-95"
+                className="relative aspect-square overflow-hidden rounded-sm transition-shadow hover:brightness-95"
                 style={{
                   backgroundColor:
                     ms > 0
@@ -407,7 +466,24 @@ function PageReadingHeatmap({
                       ? `inset 0 0 0 2px rgb(${PAGE_HEAT_RGB})`
                       : undefined,
                 }}
-              />
+              >
+                {(marks.notes > 0 || marks.annotations > 0) && (
+                  <span className="absolute right-0.5 top-0.5 flex gap-0.5">
+                    {marks.notes > 0 ? (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full ring-1 ring-white/80"
+                        style={{ backgroundColor: MARK_NOTE }}
+                      />
+                    ) : null}
+                    {marks.annotations > 0 ? (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full ring-1 ring-white/80"
+                        style={{ backgroundColor: MARK_ANNOTATION }}
+                      />
+                    ) : null}
+                  </span>
+                )}
+              </div>
             </Link>
           );
         })}
@@ -422,6 +498,7 @@ export function ActivityDetailClient({
   monthAllSessions,
   totalPages = 0,
   recentPage = 0,
+  pageMarks,
   initialYear,
   initialMonth,
 }: ActivityDetailClientProps) {
@@ -802,6 +879,7 @@ export function ActivityDetailClient({
             pageMs={pageMs}
             fileName={fileName}
             recentPage={recentPage}
+            pageMarks={pageMarks}
           />
         </div>
       ) : null}
