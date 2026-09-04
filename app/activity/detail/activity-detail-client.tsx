@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   dailyMsForMonth,
@@ -14,6 +15,7 @@ import {
   type DwellSliceWithPage,
 } from "@/lib/activity/aggregate-dwell";
 import { formatDurationMs } from "@/lib/activity/format-duration";
+import { buildPdfHref } from "@/lib/pdf/jump-search";
 
 export type ActivityDetailClientProps = {
   /** 指定文件时显示占比；省略则为全部应用总览 */
@@ -272,9 +274,11 @@ function Heatmap({
 
 function PageReadingHeatmap({
   pageMs,
+  fileName,
   recentPage = 0,
 }: {
   pageMs: number[];
+  fileName: string;
   recentPage?: number;
 }) {
   const maxMs = Math.max(...pageMs, 0);
@@ -374,12 +378,16 @@ function PageReadingHeatmap({
             ms <= 0 ? 0 : 0.18 + 0.82 * (ms / Math.max(maxMs, 1));
           const active = hoverPage === page;
           const isFocus = page === focusPage;
+          const href = buildPdfHref({ fileName, pageNumber: page });
           return (
-            <div
+            <Link
               key={page}
-              className="relative"
+              href={href}
+              className="relative block"
               onMouseEnter={() => setHoverPage(page)}
               onMouseLeave={() => setHoverPage(null)}
+              title={`跳转到第 ${page} 页 · ${formatDurationDetailed(ms)}`}
+              aria-label={`跳转到第 ${page} 页`}
             >
               {active ? (
                 <div className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#18181b] px-2 py-1 text-[11px] text-white shadow-sm">
@@ -388,8 +396,7 @@ function PageReadingHeatmap({
                 </div>
               ) : null}
               <div
-                className="aspect-square rounded-sm transition-shadow"
-                title={`第 ${page} 页 · ${formatDurationDetailed(ms)}`}
+                className="aspect-square rounded-sm transition-shadow hover:brightness-95"
                 style={{
                   backgroundColor:
                     ms > 0
@@ -401,7 +408,7 @@ function PageReadingHeatmap({
                       : undefined,
                 }}
               />
-            </div>
+            </Link>
           );
         })}
       </div>
@@ -789,9 +796,13 @@ export function ActivityDetailClient({
         </div>
       </section>
 
-      {isFileScope ? (
+      {isFileScope && fileName ? (
         <div className="lg:col-span-2">
-          <PageReadingHeatmap pageMs={pageMs} recentPage={recentPage} />
+          <PageReadingHeatmap
+            pageMs={pageMs}
+            fileName={fileName}
+            recentPage={recentPage}
+          />
         </div>
       ) : null}
     </div>
