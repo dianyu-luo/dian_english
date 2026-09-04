@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "主页",
-  description: "NE project dashboard",
+  title: "NE",
+  description: "英语阅读学习工作台",
 };
 
 export default function RootLayout({
