@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="NE">
+  <!-- Content scaled to fill; background is transparent -->
+  <g transform="translate(6.29 2) scale(1.42857) translate(-14 -11)">
+    <!-- PDF page stack -->
+    <rect x="18" y="15" width="32" height="38" rx="3" fill="#e7e2d9"/>
+    <rect x="14" y="11" width="32" height="38" rx="3" fill="#faf8f4"/>
+
+    <!-- Quiet body copy -->
+    <rect x="19.5" y="17" width="15" height="1.7" rx="0.85" fill="#d6d3d1"/>
+    <rect x="19.5" y="21.75" width="20" height="1.7" rx="0.85" fill="#d6d3d1"/>
+
+    <!-- Selected word (选词提问) -->
+    <rect x="18.8" y="25.9" width="14.2" height="5.8" rx="1.3" fill="#fbbf24" opacity=".4"/>
+    <rect x="20.4" y="27.5" width="11" height="2.3" rx="1.15" fill="#1c1917"/>
+
+    <!-- Following line -->
+    <rect x="19.5" y="34.4" width="17.5" height="1.7" rx="0.85" fill="#d6d3d1"/>
+
+    <!-- Annotation pin (标注笔记) -->
+    <g transform="translate(34.5 23.6)">
+      <path
+        fill="#d97706"
+        d="M4.15 0a4.15 4.15 0 0 0-4.15 4.15c0 2.85 4.15 7.25 4.15 7.25S8.3 7 8.3 4.15A4.15 4.15 0 0 0 4.15 0Z"
+      />
+      <circle cx="4.15" cy="3.95" r="1.5" fill="#faf8f4"/>
+    </g>
+
+    <!-- Compact NE wordmark -->
+    <g fill="#1c1917" transform="translate(20.25 41.8)">
+      <path d="M0 0h1.2l2.1 4.45V0h1.2v6.55H3.3L1.2 2.1v4.45H0V0Z"/>
+      <path d="M5.95 0h4.2v1.2H7.15v1.55h3.25v1.1H7.15v1.5h3.15v1.2H5.95V0Z"/>
+    </g>
+  </g>
+</svg>
