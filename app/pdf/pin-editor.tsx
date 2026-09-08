@@ -371,6 +371,15 @@ export function PinEditorPanel({
   const theme = pinEditorTheme(kind);
   const flipLeft = pin.rectLeft + pin.rectWidth > 0.68;
   const dirty = draft !== (pin.content ?? "");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  }, [pin.id, kind]);
 
   return (
     <div
@@ -411,6 +420,7 @@ export function PinEditorPanel({
       </div>
       <div className="px-3 pt-3">
         <textarea
+          ref={textareaRef}
           value={draft}
           onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => {
@@ -422,7 +432,6 @@ export function PinEditorPanel({
           rows={4}
           placeholder={pinPlaceholder(kind)}
           className={`min-h-[6rem] w-full resize-none rounded-md border border-[#e7e2d9] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#1c1917] shadow-[inset_0_1px_2px_rgba(28,25,23,0.03)] outline-none transition-[border-color,box-shadow] placeholder:text-[#c4bfb8] ${theme.focus}`}
-          autoFocus
         />
       </div>
       <div className="flex items-center gap-1 px-2.5 pt-2 pb-2.5">
