@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Read-only Q&A over the codebase. Use when the user runs /ask or wants answers without making changes.
+description: 只读答疑：探索与解释代码库，不做任何改动。用户执行 /ask 或不希望改文件时使用。
 disable-model-invocation: true
 ---
 

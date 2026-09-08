@@ -1,0 +1,27 @@
+---
+description: NE（dian_english）项目默认约束，每个 Agent 启动时都会加载
+alwaysApply: true
+---
+
+# NE 默认约束
+
+## 项目结构
+
+- `app/`：Next.js App Router 页面与 API（`pdf`、`activity`、`note`、`settings`）
+- `lib/`：业务逻辑（`db`、`activity`、`ai`、`dwell`、`pdf`）
+- `components/`：共享 UI 组件
+- `data/`、`.env*`：本地数据与密钥，勿提交
+
+## 行为约定
+
+- 只改与当前任务相关的文件，不做无关重构
+- 提交日志用中文；未明确要求时不要 push
+- 回复简洁，用中文
+- 不要轻易生成单元测试；有必要时提醒，但不要直接生成
+
+## 技术约定
+
+- Next.js 版本与常规不同，改代码前先读 `node_modules/next/dist/docs/` 与 `AGENTS.md`
+- 数据层：Drizzle + libsql/SQLite；schema 在 `lib/db/schema.ts`
+- PDF：`react-pdf` / pdfjs；AI：`lib/ai/`（DeepSeek / GLM）
+- 样式：Tailwind CSS v4；优先沿用现有组件与命名
