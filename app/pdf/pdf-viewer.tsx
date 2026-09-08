@@ -12,7 +12,7 @@ import {
   type OnPdfWordSelect,
   type PdfWordSelectInfo,
 } from "./get-selected-word";
-import { parsePdfJumpSearch } from "@/lib/pdf/jump-search";
+import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "./markdown";
 import {
   PIN_KINDS,
@@ -936,6 +936,9 @@ export default function PdfViewer({
   const openRecentItem = useCallback(
     (item: RecentItem) => {
       setRecentMenuOpen(false);
+      router.replace(
+        buildPdfHref({ fileName: item.fileName }),
+      );
       if (item.fileName === fileNameRef.current && file) {
         setPageNumber((p) => {
           if (p !== item.pageNumber) skipPersistRef.current = true;
@@ -964,7 +967,7 @@ export default function PdfViewer({
       setError(null);
       onRecentChangeRef.current?.(item);
     },
-    [file],
+    [file, router],
   );
 
   const toggleRecentMenu = useCallback(() => {
