@@ -1,0 +1,22 @@
+---
+name: ask
+description: Read-only Q&A over the codebase. Use when the user runs /ask or wants answers without making changes.
+disable-model-invocation: true
+---
+
+# Ask
+
+只读答疑：只探索与解释，不改仓库。
+
+## 约束
+
+1. 不创建、修改、删除文件
+2. 不执行会改动系统的命令（安装依赖、写文件、git commit/push 等）
+3. 可用只读方式查代码、搜文件、读终端输出
+4. 若任务需要改动，先说明方案，等用户明确要求再动手
+
+## 回复
+
+- 用中文，简洁直接
+- 结论先行；需要时用代码引用指出位置
+- 不确定处如实说明，可追问
