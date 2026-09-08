@@ -3,8 +3,6 @@
 import { useEffect, useRef } from "react";
 import { decideDwellIdle, DWELL_IDLE_MS, DWELL_MIN_MS } from "./idle";
 
-/** 失焦后在该时长内切回，视作未切换，仍属同一段 */
-export const DWELL_FOCUS_GAP_MS = 3 * 60 * 1000;
 export { DWELL_IDLE_MS, DWELL_MIN_MS };
 
 const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
@@ -26,8 +24,6 @@ type Options = {
   pageNumber?: number | null;
   /** 为 false 时不采集 */
   enabled?: boolean;
-  /** 失焦拆段阈值；小于该间隔切回则视作未切换，默认 3 分钟 */
-  gapMs?: number;
   /** 进行中心跳上报间隔，避免异常退出丢数据 */
   heartbeatMs?: number;
   /** 无操作超过该时长视为未阅读；0 关闭。默认 5 分钟 */
@@ -75,9 +71,8 @@ function persistDwell(
 /**
  * 页面停留 / 学习时长采集：
  * - 打开页面开始计时
- * - 离开页面、切站、或失焦：先记离开时刻
- * - 在 gapMs（默认 3 分钟）内切回：视作未切换，同一段继续
- * - 超过 gapMs 再切回：结束上一段，重新开始计时
+ * - 离开页面、切站、或失焦：结束当前段
+ * - 切回后重新开始计时（新的一段）
  * - 页面仍在前台但 idleMs（默认 5 分钟）内无操作：视为未阅读，在最后一次操作处结束；再次操作才重新计时
  */
 export function usePageDwell({
@@ -85,12 +80,9 @@ export function usePageDwell({
   resourceKey = null,
   pageNumber = null,
   enabled = true,
-  gapMs = DWELL_FOCUS_GAP_MS,
   heartbeatMs = 30_000,
   idleMs = DWELL_IDLE_MS,
 }: Options) {
-  const gapMsRef = useRef(gapMs);
-  gapMsRef.current = gapMs;
   const idleMsRef = useRef(idleMs);
   idleMsRef.current = idleMs;
 
@@ -241,52 +233,22 @@ export function usePageDwell({
     };
 
     const onHidden = () => {
-      if (!hasSession || ended || blurredAt != null) return;
-      clearIdleTimer();
-      clearMinPersistTimer();
-      const now = Date.now();
-      // 暂存离开时刻；是否拆段等切回后再定
-      writeDwell(
-        {
-          ...buildPayload(now),
-          endedAt: now,
-          durationMs: Math.max(0, now - startedAt),
-        },
-        true,
-      );
-      blurredAt = now;
+      if (blurredAt != null) return;
+      if (hasSession && !ended) {
+        endSession(Date.now(), true);
+      }
+      blurredAt = Date.now();
     };
 
     const onVisible = () => {
-      if (!hasSession) {
-        startSession(Date.now());
+      if (blurredAt == null) {
+        // 空闲结束后仍在前台：焦点变化不算阅读，等操作再计
+        if (!hasSession) startSession(Date.now());
         return;
       }
-      // 空闲结束后仍在前台：切回焦点不算阅读，等操作再计
-      if (ended) {
-        if (blurredAt == null) return;
-        blurredAt = null;
-        startSession(Date.now());
-        return;
-      }
-      if (blurredAt == null) return;
-      const leftAt = blurredAt;
+      // 失焦/切站后再回来：旧段已结束，重新开一段
       blurredAt = null;
-      lastActivityAt = Date.now();
-      if (Date.now() - leftAt >= gapMsRef.current) {
-        endSession(leftAt);
-        startSession(Date.now());
-        return;
-      }
-      // < gapMs：视作未切换，同一段继续
-      ended = false;
-      writeDwell({
-        ...buildPayload(null),
-        endedAt: null,
-        durationMs: Math.max(0, Date.now() - startedAt),
-      });
-      armIdleTimer();
-      armMinPersistTimer();
+      startSession(Date.now());
     };
 
     const onVisibilityChange = () => {
