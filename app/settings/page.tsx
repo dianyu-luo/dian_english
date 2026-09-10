@@ -305,17 +305,6 @@ export default function SettingsPage() {
               <span className="text-sm text-[#78716c]">分钟</span>
             </div>
           </SettingRow>
-          <SettingRow label="失焦合并窗口" hint="DWELL_FOCUS_GAP_MS · 短失焦仍算同一段">
-            <div className="flex items-center gap-2">
-              <input
-                disabled
-                type="number"
-                defaultValue={3}
-                className={`${fieldClass} max-w-[8rem]`}
-              />
-              <span className="text-sm text-[#78716c]">分钟</span>
-            </div>
-          </SettingRow>
           <SettingRow label="本周起始日" hint="活动页「本周使用时长」">
             <select disabled defaultValue="monday" className={fieldClass}>
               <option value="monday">周一</option>
