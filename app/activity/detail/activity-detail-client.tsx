@@ -21,27 +21,14 @@ import {
   type DwellSliceWithPage,
 } from "@/lib/activity/aggregate-dwell";
 import { formatDurationMs } from "@/lib/activity/format-duration";
-import { formatRelativeTime } from "@/lib/activity/format-relative-time";
 import type { PageMarksMap } from "@/lib/activity/page-marks-types";
-import {
-  recentEditColor,
-  type RecentEditColor,
-} from "@/lib/activity/recent-edit";
 import { buildPdfHref } from "@/lib/pdf/jump-search";
+import {
+  RecentEditsSection,
+  type RecentEditListItem,
+} from "../recent-edits-section";
 
-/** 可序列化传入客户端的最近编辑项 */
-export type RecentEditListItem = {
-  key: string;
-  kind: "note" | "mark" | "annotation";
-  kindLabel: string;
-  type: string;
-  typeLabel: string;
-  title: string;
-  fileName: string;
-  pageNumber: number;
-  updatedAt: string;
-  href: string;
-};
+export type { RecentEditListItem };
 
 export type ActivityDetailClientProps = {
   /** 指定文件时显示占比；省略则为全部应用总览 */
@@ -131,18 +118,6 @@ const PAGE_HEAT_WINDOW = 100;
 const MARK_NOTE = "#eab308";
 /** 标注角标（批注 / 问题 / 书签 / 待办） */
 const MARK_ANNOTATION = "#ef4444";
-
-const RECENT_EDIT_BADGE: Record<RecentEditColor, string> = {
-  word: "border-[#facc15] bg-[#fef9c3] text-[#854d0e]",
-  question: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]",
-  note: "border-[#cbd5e1] bg-[#f1f5f9] text-[#475569]",
-  bookmark: "border-[#fdba74] bg-[#fff7ed] text-[#c2410c]",
-  todo: "border-[#5eead4] bg-[#f0fdfa] text-[#0f766e]",
-  annotation: "border-[#fca5a5] bg-[#fef2f2] text-[#b91c1c]",
-};
-
-/** 未选页时展示的最近条数 */
-const RECENT_EDIT_DEFAULT_LIMIT = 20;
 
 type PageMarkFilter = "all" | "notes" | "annotations";
 
@@ -766,13 +741,6 @@ export function ActivityDetailClient({
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
   const isFileScope = Boolean(fileName?.trim());
 
-  const displayedEdits = useMemo(() => {
-    if (selectedPage == null) {
-      return recentEdits.slice(0, RECENT_EDIT_DEFAULT_LIMIT);
-    }
-    return recentEdits.filter((item) => item.pageNumber === selectedPage);
-  }, [recentEdits, selectedPage]);
-
   useEffect(() => {
     setSessions(fileSessions);
   }, [fileSessions]);
@@ -1219,74 +1187,14 @@ export function ActivityDetailClient({
     </div>
 
     {isFileScope ? (
-      <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-medium">
-              {selectedPage != null
-                ? `第 ${selectedPage} 页编辑内容`
-                : "最近编辑内容"}
-            </h2>
-            {selectedPage != null ? (
-              <p className="mt-1 text-sm text-[#78716c]">
-                来自上方热力图选中的页
-              </p>
-            ) : null}
-          </div>
-          {selectedPage != null ? (
-            <button
-              type="button"
-              onClick={() => setSelectedPage(null)}
-              className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] px-3 py-1.5 text-sm text-[#3f3f46] hover:bg-[#f4f4f5]"
-            >
-              显示全部最近编辑
-            </button>
-          ) : null}
-        </div>
-        {displayedEdits.length === 0 ? (
-          <p className="text-sm leading-6 text-[#78716c]">
-            {selectedPage != null
-              ? "本页暂无笔记、标记或批注。"
-              : "本文件暂无笔记、标记或批注。"}
-          </p>
-        ) : (
-          <div className="border-y border-[#e7e2d9]">
-            <div className="hidden grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] gap-4 border-b border-[#e7e2d9] py-2 text-xs text-[#78716c] sm:grid">
-              <span>内容</span>
-              <span className="text-right">类型</span>
-              <span className="text-right">最近更新</span>
-            </div>
-            <ul className="divide-y divide-[#e7e2d9]">
-              {displayedEdits.map((item) => {
-                const time = formatRelativeTime(item.updatedAt);
-                return (
-                  <li key={item.key}>
-                    <Link
-                      href={item.href}
-                      className="grid grid-cols-1 gap-1 py-3 hover:bg-[#f0ebe3]/70 sm:grid-cols-[minmax(0,1fr)_7.5rem_10.5rem] sm:items-center sm:gap-4"
-                    >
-                      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]">
-                        {item.title}
-                      </span>
-                      <span className="sm:flex sm:justify-end">
-                        <span
-                          className={`inline-flex whitespace-nowrap border px-1.5 py-0.5 text-xs ${RECENT_EDIT_BADGE[recentEditColor(item)]}`}
-                        >
-                          {item.kindLabel} · {item.typeLabel}
-                        </span>
-                      </span>
-                      <span className="whitespace-nowrap text-xs text-[#a8a29e] sm:text-right">
-                        第 {item.pageNumber} 页
-                        {time ? ` · ${time}` : ""}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </section>
+      <RecentEditsSection
+        items={recentEdits}
+        selectedPage={selectedPage}
+        onClearPage={() => setSelectedPage(null)}
+        showFileName={false}
+        defaultLimit={20}
+        emptyContext="file"
+      />
     ) : null}
     </>
   );

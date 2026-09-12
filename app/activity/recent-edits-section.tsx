@@ -46,10 +46,31 @@ const FILTERS: { id: EditFilter; label: string }[] = [
 
 type Props = {
   items: RecentEditListItem[];
+  /** 热力图选中的页；有值时只显示该页 */
+  selectedPage?: number | null;
+  onClearPage?: () => void;
+  /** 列表是否显示文件名（总览页需要，单文件详情不需要） */
+  showFileName?: boolean;
+  /** 未选页时最多显示条数；不传则显示全部匹配项 */
+  defaultLimit?: number;
+  /** 空状态文案：应用总览 / 单文件 */
+  emptyContext?: "app" | "file";
 };
 
-export function RecentEditsSection({ items }: Props) {
+export function RecentEditsSection({
+  items,
+  selectedPage = null,
+  onClearPage,
+  showFileName = true,
+  defaultLimit,
+  emptyContext = "app",
+}: Props) {
   const [filter, setFilter] = useState<EditFilter>("all");
+
+  const pageItems = useMemo(() => {
+    if (selectedPage == null) return items;
+    return items.filter((item) => item.pageNumber === selectedPage);
+  }, [items, selectedPage]);
 
   const counts = useMemo(() => {
     const map: Record<RecentEditColor, number> = {
@@ -60,23 +81,34 @@ export function RecentEditsSection({ items }: Props) {
       todo: 0,
       annotation: 0,
     };
-    for (const item of items) {
+    for (const item of pageItems) {
       map[recentEditColor(item)] += 1;
     }
     return map;
-  }, [items]);
+  }, [pageItems]);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return items;
-    return items.filter((item) => recentEditColor(item) === filter);
-  }, [items, filter]);
+    const list =
+      filter === "all"
+        ? pageItems
+        : pageItems.filter((item) => recentEditColor(item) === filter);
+    if (selectedPage == null && defaultLimit != null) {
+      return list.slice(0, defaultLimit);
+    }
+    return list;
+  }, [pageItems, filter, selectedPage, defaultLimit]);
+
+  const title =
+    selectedPage != null ? `第 ${selectedPage} 页编辑内容` : "最近编辑内容";
 
   if (items.length === 0) {
     return (
       <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
         <h2 className="text-lg font-medium">最近编辑内容</h2>
         <p className="text-sm leading-6 text-[#78716c]">
-          暂无数据。接入后这里会显示笔记、标记和批注的变更。
+          {emptyContext === "file"
+            ? "本文件暂无笔记、标记或批注。"
+            : "暂无数据。接入后这里会显示笔记、标记和批注的变更。"}
         </p>
       </section>
     );
@@ -85,38 +117,63 @@ export function RecentEditsSection({ items }: Props) {
   return (
     <section className="mt-12 space-y-3 border-t border-[#d6d3d1] pt-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h2 className="text-lg font-medium">最近编辑内容</h2>
-        <div className="flex flex-wrap gap-3 text-sm">
-          {FILTERS.map((item) => {
-            const count = item.id === "all" ? items.length : counts[item.id];
-            const on = filter === item.id;
-            const disabled = item.id !== "all" && count === 0;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                disabled={disabled}
-                onClick={() => setFilter(item.id)}
-                className={`relative pb-1 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-                  on
-                    ? "font-medium text-[#1c1917]"
-                    : "text-[#78716c] hover:text-[#1c1917]"
-                }`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  {item.label}
-                  <span className="tabular-nums text-[#a8a29e]">{count}</span>
-                </span>
-                {on ? (
-                  <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[#1c1917]" />
-                ) : null}
-              </button>
-            );
-          })}
+        <div>
+          <h2 className="text-lg font-medium">{title}</h2>
+          {selectedPage != null ? (
+            <p className="mt-1 text-sm text-[#78716c]">
+              来自上方热力图选中的页
+            </p>
+          ) : null}
         </div>
+        {selectedPage != null && onClearPage ? (
+          <button
+            type="button"
+            onClick={onClearPage}
+            className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] px-3 py-1.5 text-sm text-[#3f3f46] hover:bg-[#f4f4f5]"
+          >
+            显示全部最近编辑
+          </button>
+        ) : null}
       </div>
 
-      {filtered.length === 0 ? (
+      <div className="flex flex-wrap gap-3 text-sm">
+        {FILTERS.map((item) => {
+          const count = item.id === "all" ? pageItems.length : counts[item.id];
+          const on = filter === item.id;
+          const disabled = item.id !== "all" && count === 0;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => setFilter(item.id)}
+              className={`relative pb-1 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                on
+                  ? "font-medium text-[#1c1917]"
+                  : "text-[#78716c] hover:text-[#1c1917]"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {item.label}
+                <span className="tabular-nums text-[#a8a29e]">{count}</span>
+              </span>
+              {on ? (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[#1c1917]" />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {pageItems.length === 0 ? (
+        <p className="text-sm leading-6 text-[#78716c]">
+          {selectedPage != null
+            ? "本页暂无笔记、标记或批注。"
+            : emptyContext === "file"
+              ? "本文件暂无笔记、标记或批注。"
+              : "暂无最近编辑。"}
+        </p>
+      ) : filtered.length === 0 ? (
         <p className="text-sm leading-6 text-[#78716c]">该类型暂无最近编辑。</p>
       ) : (
         <div className="border-y border-[#e7e2d9]">
@@ -138,9 +195,11 @@ export function RecentEditsSection({ items }: Props) {
                       <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[#1c1917]">
                         {item.title}
                       </span>
-                      <span className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#a8a29e]">
-                        {item.fileName}
-                      </span>
+                      {showFileName ? (
+                        <span className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#a8a29e]">
+                          {item.fileName}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="sm:flex sm:justify-end">
                       <span
