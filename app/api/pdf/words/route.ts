@@ -87,6 +87,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "缺少必要字段" }, { status: 400 });
   }
 
+  const contextBefore =
+    typeof body.contextBefore === "string" ? body.contextBefore : "";
+  const contextAfter =
+    typeof body.contextAfter === "string" ? body.contextAfter : "";
+
+  // 判同不依赖 rect：同文件同页同词同类型且前后文相同即视为一条
   const [existing] = await db
     .select()
     .from(pdfWordMarks)
@@ -96,10 +102,8 @@ export async function POST(request: Request) {
         eq(pdfWordMarks.word, word),
         eq(pdfWordMarks.type, type),
         eq(pdfWordMarks.pageNumber, pageNumber),
-        eq(pdfWordMarks.rectLeft, rect.left),
-        eq(pdfWordMarks.rectTop, rect.top),
-        eq(pdfWordMarks.rectWidth, rect.width),
-        eq(pdfWordMarks.rectHeight, rect.height),
+        eq(pdfWordMarks.contextBefore, contextBefore),
+        eq(pdfWordMarks.contextAfter, contextAfter),
       ),
     )
     .limit(1);
@@ -111,8 +115,10 @@ export async function POST(request: Request) {
       .update(pdfWordMarks)
       .set({
         note: note !== undefined ? note : existing.note,
-        contextBefore: body.contextBefore ?? existing.contextBefore,
-        contextAfter: body.contextAfter ?? existing.contextAfter,
+        rectLeft: rect.left,
+        rectTop: rect.top,
+        rectWidth: rect.width,
+        rectHeight: rect.height,
         locator,
         queryCount: existing.queryCount + 1,
         updatedAt: now,
@@ -134,8 +140,8 @@ export async function POST(request: Request) {
       rectTop: rect.top,
       rectWidth: rect.width,
       rectHeight: rect.height,
-      contextBefore: body.contextBefore ?? "",
-      contextAfter: body.contextAfter ?? "",
+      contextBefore,
+      contextAfter,
       locator,
       queryCount: 1,
       createdAt: now,
