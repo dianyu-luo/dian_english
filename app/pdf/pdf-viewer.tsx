@@ -2205,6 +2205,12 @@ export default function PdfViewer({
     return wordMarks.find((m) => m.id === activeWordMarkId) ?? null;
   }, [activeWordMarkId, wordMarks]);
 
+  const wordMarkEditorDirty =
+    activeWordMarkItem != null && wordMarkDraft !== (activeWordMarkItem.note ?? "");
+  const wordMarkEditorFlipLeft =
+    activeWordMarkItem != null &&
+    activeWordMarkItem.rectLeft + activeWordMarkItem.rectWidth > 0.68;
+
   return (
     <div ref={rootRef} className={fillHeight ? "flex h-full min-h-0 flex-col gap-3" : "space-y-4"}>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border border-[#e7e2d9] bg-[#faf8f4] px-3 py-2">
@@ -2865,54 +2871,90 @@ export default function PdfViewer({
                 {activeWordMarkItem && activeWordMarkItem.pageNumber === sheetPage ? (
                   <div
                     ref={wordMarkEditorRef}
-                    className="absolute z-40 w-56 border border-[#d6d3d1] bg-[#faf8f4] p-2 shadow-md"
+                    className="absolute z-40 w-[18.5rem] overflow-hidden rounded-lg border border-[#e4dfd6] bg-[#faf8f4] shadow-[0_12px_36px_rgba(28,25,23,0.14),0_2px_6px_rgba(28,25,23,0.06)]"
                     style={{
-                      left: `${Math.min(
-                        (activeWordMarkItem.rectLeft + activeWordMarkItem.rectWidth) * 100,
-                        72,
-                      )}%`,
+                      left: wordMarkEditorFlipLeft
+                        ? `${activeWordMarkItem.rectLeft * 100}%`
+                        : `${Math.min(
+                            (activeWordMarkItem.rectLeft + activeWordMarkItem.rectWidth) * 100,
+                            68,
+                          )}%`,
                       top: `${activeWordMarkItem.rectTop * 100}%`,
+                      transform: wordMarkEditorFlipLeft
+                        ? "translateX(calc(-100% - 8px))"
+                        : "translateX(8px)",
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
                   >
-                    <p className="mb-1 text-xs text-[#78716c]">
-                      {activeWordMarkItem.type === "sentence" ? "句子" : "单词"} ·{" "}
-                      {activeWordMarkItem.word.slice(0, 24)}
-                      {activeWordMarkItem.word.length > 24 ? "…" : ""} · 第{" "}
-                      {activeWordMarkItem.pageNumber} 页
-                    </p>
-                    <textarea
-                      value={wordMarkDraft}
-                      onChange={(e) => setWordMarkDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                          e.preventDefault();
-                          if (!wordMarkSaving) void saveWordMarkNote();
-                        }
-                      }}
-                      rows={3}
-                      placeholder="输入笔记…"
-                      className="w-full resize-none border border-[#d6d3d1] bg-white px-2 py-1.5 text-sm text-[#1c1917] outline-none focus:border-[#a8a29e]"
-                      autoFocus
-                    />
-                    <div className="mt-1.5 flex items-center gap-1">
+                    <div className="h-0.5 w-full bg-[#ca8a04]" aria-hidden />
+                    <div className="flex items-center gap-2 border-b border-[#ebe6dc] bg-[#f7f4ee]/90 px-3 py-2 backdrop-blur-[2px]">
+                      <span className="inline-flex items-center rounded-md bg-[#fefce8] px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-[#854d0e] ring-1 ring-inset ring-[#fde047]/90">
+                        {activeWordMarkItem.type === "sentence" ? "句子" : "单词"}
+                      </span>
+                      <span
+                        className="min-w-0 flex-1 truncate text-[11px] text-[#78716c]"
+                        title={activeWordMarkItem.word}
+                      >
+                        {activeWordMarkItem.word}
+                      </span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-[#a8a29e]">
+                        第 {activeWordMarkItem.pageNumber} 页
+                      </span>
+                      <button
+                        type="button"
+                        onClick={closeWordMarkEditor}
+                        aria-label="关闭"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#a8a29e] transition-colors hover:bg-[#efebe4] hover:text-[#1c1917]"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                          <path
+                            d="M3 3l6 6M9 3l-6 6"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="px-3 pt-3">
+                      <textarea
+                        value={wordMarkDraft}
+                        onChange={(e) => setWordMarkDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            if (!wordMarkSaving) void saveWordMarkNote();
+                          }
+                        }}
+                        rows={4}
+                        placeholder="输入笔记…"
+                        className="min-h-[6rem] w-full resize-none rounded-md border border-[#e7e2d9] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#1c1917] shadow-[inset_0_1px_2px_rgba(28,25,23,0.03)] outline-none transition-[border-color,box-shadow] placeholder:text-[#c4bfb8] focus:border-[#ca8a04]/70 focus:ring-2 focus:ring-[#ca8a04]/15"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 px-2.5 pt-2 pb-2.5">
                       <button
                         type="button"
                         disabled={wordMarkSaving}
                         onClick={() => void deleteWordMark(activeWordMarkItem)}
-                        className="px-2 py-1 text-xs text-[#b91c1c] hover:bg-[#fee2e2] disabled:opacity-50"
+                        className="rounded-md px-2 py-1.5 text-xs text-[#b91c1c]/80 transition-colors hover:bg-[#fef2f2] hover:text-[#b91c1c] disabled:opacity-50"
                       >
                         删除
                       </button>
-                      <span className="mx-0.5 h-3 w-px shrink-0 bg-[#e7e5e4]" aria-hidden />
-                      <div className="ml-auto flex items-center">
-                        <button
-                          type="button"
-                          onClick={closeWordMarkEditor}
-                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
+                      <div className="ml-auto flex items-center gap-1">
+                        {wordMarkEditorDirty ? (
+                          <span
+                            className="mr-1 h-1.5 w-1.5 rounded-full bg-[#ca8a04]/80"
+                            title="未保存"
+                            aria-label="未保存"
+                          />
+                        ) : null}
+                        <kbd
+                          className="mr-0.5 hidden rounded border border-[#e7e2d9] bg-[#f3efe8] px-1 py-0.5 font-sans text-[10px] text-[#a8a29e] sm:inline"
+                          title="Ctrl+Enter 保存"
                         >
-                          取消
-                        </button>
+                          ⌃↵
+                        </kbd>
                         <button
                           type="button"
                           onClick={() => {
@@ -2925,16 +2967,26 @@ export default function PdfViewer({
                             closeWordMarkEditor();
                             router.push(href);
                           }}
-                          className="px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
+                          title="在 Markdown 编辑器中打开"
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-[#78716c] transition-colors hover:bg-[#efebe4] hover:text-[#1c1917]"
                         >
-                          编辑
+                          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+                            <path
+                              d="M4.5 2H2.5A.5.5 0 0 0 2 2.5v7a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5V7.5M7 2h3v3M5.5 6.5 10 2"
+                              stroke="currentColor"
+                              strokeWidth="1.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          展开
                         </button>
                         <button
                           type="button"
                           disabled={wordMarkSaving}
                           title="Ctrl+Enter"
                           onClick={() => void saveWordMarkNote()}
-                          className="ml-0.5 border border-[#d6d3d1] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f0ebe3] disabled:opacity-50"
+                          className="rounded-md bg-[#854d0e] px-2.5 py-1.5 text-xs font-medium text-[#faf8f4] shadow-sm transition-colors hover:bg-[#713f12] disabled:opacity-50"
                         >
                           {wordMarkSaving ? "保存中…" : "保存"}
                         </button>
