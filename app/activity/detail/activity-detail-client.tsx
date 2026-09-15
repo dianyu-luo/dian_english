@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   clipSlicesToRange,
@@ -389,12 +388,29 @@ function PageReadingHeatmap({
   const [hoverPage, setHoverPage] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState<PageMarkFilter>("all");
+  const [openingPage, setOpeningPage] = useState(false);
   const readCount = pageMs.filter((ms) => ms > 0).length;
   const totalMs = pageMs.reduce((a, b) => a + b, 0);
   const totalPages = pageMs.length;
 
-  const openPage = (page: number) => {
-    router.push(buildPdfHref({ fileName, pageNumber: page }));
+  /** 先写入 pdf_recent_reads（页码 + updated_at），再按「最近打开」用 fileName 进入阅读器 */
+  const openPage = async (page: number) => {
+    if (openingPage || page < 1) return;
+    setOpeningPage(true);
+    try {
+      const res = await fetch("/api/pdf/recent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName, pageNumber: page }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "更新阅读进度失败");
+      }
+      router.push(buildPdfHref({ fileName }));
+    } catch {
+      setOpeningPage(false);
+    }
   };
 
   const selectPage = (page: number) => {
@@ -662,12 +678,14 @@ function PageReadingHeatmap({
           <p className="mt-1 text-[11px] text-[#a8a29e]">
             单击查看该页编辑 · 双击打开
           </p>
-          <Link
-            href={buildPdfHref({ fileName, pageNumber: activePage })}
-            className="mt-3 inline-block text-sm text-[#1c1917] underline underline-offset-4"
+          <button
+            type="button"
+            disabled={openingPage}
+            onClick={() => void openPage(activePage)}
+            className="mt-3 inline-block text-sm text-[#1c1917] underline underline-offset-4 disabled:opacity-50"
           >
-            打开第 {activePage} 页
-          </Link>
+            {openingPage ? "打开中…" : `打开第 ${activePage} 页`}
+          </button>
 
           <div className="mt-8">
             <p className="text-[11px] tracking-wide text-[#a8a29e]">
