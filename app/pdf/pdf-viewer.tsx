@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Document, Page, pdfjs } from "react-pdf";
+import { Document, Outline, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import {
@@ -133,6 +133,17 @@ const CONTINUOUS_MOUNT_ALL_LIMIT = 30;
 const A4_ASPECT = 297 / 210;
 
 type PdfViewMode = "paged" | "continuous";
+
+type OutlineStatus = "loading" | "ready" | "empty" | "error";
+
+const OUTLINE_CLASSName = [
+  "text-sm text-[#1c1917]",
+  "[&>ul]:m-0 [&>ul]:list-none [&>ul]:space-y-0.5 [&>ul]:p-0",
+  "[&_ul]:m-0 [&_ul]:list-none [&_ul]:space-y-0.5 [&_ul]:p-0",
+  "[&_ul_ul]:ml-2 [&_ul_ul]:border-l [&_ul_ul]:border-[#e7e2d9] [&_ul_ul]:pl-2",
+  "[&_a]:block [&_a]:rounded-md [&_a]:px-2 [&_a]:py-1.5 [&_a]:leading-snug [&_a]:text-[#1c1917] [&_a]:no-underline",
+  "hover:[&_a]:bg-[#efebe4]",
+].join(" ");
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
@@ -544,6 +555,8 @@ export default function PdfViewer({
   const [drawTool, setDrawTool] = useState<DrawTool>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<PdfViewMode>(readPdfViewMode);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [outlineStatus, setOutlineStatus] = useState<OutlineStatus>("loading");
   const [pageAspect, setPageAspect] = useState(A4_ASPECT);
   const [draftArrow, setDraftArrow] = useState<{
     pageNumber: number;
@@ -993,6 +1006,8 @@ export default function PdfViewer({
     setScale(1);
     setHighlight(null);
     setError(null);
+    setOutlineOpen(false);
+    setOutlineStatus("loading");
     onRecentChangeRef.current?.(null);
     onWordMarksChangeRef.current?.();
   }, []);
@@ -1096,6 +1111,22 @@ export default function PdfViewer({
     } else {
       scrollAreaRef.current?.scrollTo({ top: 0 });
     }
+  }, []);
+
+  const toggleOutline = useCallback(() => {
+    setOutlineOpen((open) => {
+      if (!open) setOutlineStatus("loading");
+      return !open;
+    });
+  }, []);
+
+  const onOutlineLoadSuccess = useCallback((outline: unknown) => {
+    const items = Array.isArray(outline) ? outline : null;
+    setOutlineStatus(items && items.length > 0 ? "ready" : "empty");
+  }, []);
+
+  const onOutlineLoadError = useCallback(() => {
+    setOutlineStatus("error");
   }, []);
 
   const changeViewMode = useCallback((mode: PdfViewMode) => {
@@ -1332,6 +1363,8 @@ export default function PdfViewer({
     closePinEditor();
     closeWordMarkEditor();
     closeSelectionMenu();
+    setOutlineOpen(false);
+    setOutlineStatus("loading");
     setDrawTool(null);
     setDraftArrow(null);
     setSelectedAnnotationId(null);
@@ -2418,6 +2451,21 @@ export default function PdfViewer({
             连续
           </button>
         </div>
+
+        <button
+          type="button"
+          disabled={!file}
+          aria-pressed={outlineOpen}
+          onClick={toggleOutline}
+          className={`border px-2.5 py-1.5 text-sm disabled:opacity-40 ${
+            outlineOpen
+              ? "border-[#a8a29e] bg-[#efebe4] font-medium text-[#1c1917]"
+              : "border-[#d6d3d1] bg-white text-[#57534e] hover:bg-[#f0ebe3]"
+          }`}
+          title="查看 PDF 目录"
+        >
+          目录
+        </button>
       </div>
 
       <div
@@ -2437,7 +2485,7 @@ export default function PdfViewer({
           setDragging(false);
           void openFile(e.dataTransfer.files?.[0] ?? null);
         }}
-        className={`relative border border-[#e7e2d9] bg-[#efebe4] ${
+        className={`relative flex flex-col border border-[#e7e2d9] bg-[#efebe4] ${
           fillHeight ? "min-h-0 flex-1" : "min-h-[70vh]"
         } ${
           dragging ? "outline outline-2 outline-[#a8a29e]" : ""
@@ -2451,28 +2499,6 @@ export default function PdfViewer({
           <div className="absolute top-2 left-1/2 z-40 -translate-x-1/2 border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-xs text-[#b91c1c] shadow-sm">
             已选中箭头 · 右键删除 / Delete · Esc 取消选中
           </div>
-        ) : null}
-        {file && !booting && viewMode === "paged" ? (
-          <>
-            <button
-              type="button"
-              disabled={pageNumber <= 1}
-              onClick={goPrevPage}
-              className="absolute top-0 bottom-0 left-0 z-20 w-10 border-r border-[#e7e2d9] bg-[#faf8f4]/90 text-2xl text-[#57534e] transition-colors hover:bg-[#f0ebe3] disabled:cursor-default disabled:opacity-30"
-              aria-label="上一页"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              disabled={pageNumber >= numPages}
-              onClick={goNextPage}
-              className="absolute top-0 bottom-0 right-0 z-20 w-10 border-l border-[#e7e2d9] bg-[#faf8f4]/90 text-2xl text-[#57534e] transition-colors hover:bg-[#f0ebe3] disabled:cursor-default disabled:opacity-30"
-              aria-label="下一页"
-            >
-              ›
-            </button>
-          </>
         ) : null}
 
         {booting ? (
@@ -2491,21 +2517,107 @@ export default function PdfViewer({
             <p className="text-sm text-[#78716c]">打开后会记住文件与页码，下次自动续读</p>
           </button>
         ) : (
-          <div
-            ref={scrollAreaRef}
-            className={`overflow-auto py-4 ${
-              viewMode === "continuous" ? "px-4" : "flex justify-center px-12"
-            } ${fillHeight ? "h-full" : ""}`}
+          <Document
+            file={file}
+            className={`flex min-h-0 flex-1 flex-col ${fillHeight ? "" : "min-h-[70vh]"}`}
+            onLoadSuccess={onDocumentLoadSuccess}
+            onLoadError={() => setError("无法加载该 PDF，请换一个文件试试")}
+            onItemClick={onItemClick}
+            loading={
+              <p className="flex flex-1 items-center justify-center py-16 text-sm text-[#78716c]">
+                正在加载 PDF…
+              </p>
+            }
+            error={
+              <p className="flex flex-1 items-center justify-center py-16 text-sm text-[#b91c1c]">
+                加载失败
+              </p>
+            }
           >
-            <Document
-              file={file}
-              className={viewMode === "continuous" ? "flex flex-col items-center" : undefined}
-              onLoadSuccess={onDocumentLoadSuccess}
-              onLoadError={() => setError("无法加载该 PDF，请换一个文件试试")}
-              onItemClick={onItemClick}
-              loading={<p className="py-16 text-sm text-[#78716c]">正在加载 PDF…</p>}
-              error={<p className="py-16 text-sm text-[#b91c1c]">加载失败</p>}
-            >
+            <div className="relative flex min-h-0 w-full flex-1">
+              {outlineOpen ? (
+                <aside
+                  className="absolute inset-y-0 left-0 z-30 flex w-[min(100%,16rem)] flex-col border-r border-[#e7e2d9] bg-[#faf8f4] shadow-md sm:relative sm:z-auto sm:w-56 sm:shadow-none"
+                  aria-label="PDF 目录"
+                >
+                  <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#ebe6dc] px-3 py-2">
+                    <span className="text-sm font-medium text-[#1c1917]">目录</span>
+                    <button
+                      type="button"
+                      onClick={() => setOutlineOpen(false)}
+                      aria-label="关闭目录"
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-[#a8a29e] transition-colors hover:bg-[#efebe4] hover:text-[#1c1917]"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                        <path
+                          d="M3 3l6 6M9 3l-6 6"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
+                    {outlineStatus === "empty" ? (
+                      <p className="px-2 py-3 text-sm leading-6 text-[#78716c]">
+                        此 PDF 没有目录
+                      </p>
+                    ) : null}
+                    {outlineStatus === "error" ? (
+                      <p className="px-2 py-3 text-sm leading-6 text-[#b91c1c]">
+                        目录加载失败
+                      </p>
+                    ) : null}
+                    {outlineStatus === "loading" ? (
+                      <p className="px-2 py-3 text-sm leading-6 text-[#78716c]">加载目录…</p>
+                    ) : null}
+                    <Outline
+                      className={`${OUTLINE_CLASSName}${
+                        outlineStatus === "ready" ? "" : " hidden"
+                      }`}
+                      onItemClick={onItemClick}
+                      onLoadSuccess={onOutlineLoadSuccess}
+                      onLoadError={onOutlineLoadError}
+                    />
+                  </div>
+                </aside>
+              ) : null}
+
+              <div className="relative min-h-0 min-w-0 flex-1">
+                {file && !booting && viewMode === "paged" ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={pageNumber <= 1}
+                      onClick={goPrevPage}
+                      className="absolute top-0 bottom-0 left-0 z-20 w-10 border-r border-[#e7e2d9] bg-[#faf8f4]/90 text-2xl text-[#57534e] transition-colors hover:bg-[#f0ebe3] disabled:cursor-default disabled:opacity-30"
+                      aria-label="上一页"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pageNumber >= numPages}
+                      onClick={goNextPage}
+                      className="absolute top-0 bottom-0 right-0 z-20 w-10 border-l border-[#e7e2d9] bg-[#faf8f4]/90 text-2xl text-[#57534e] transition-colors hover:bg-[#f0ebe3] disabled:cursor-default disabled:opacity-30"
+                      aria-label="下一页"
+                    >
+                      ›
+                    </button>
+                  </>
+                ) : null}
+                <div
+                  ref={scrollAreaRef}
+                  className={`overflow-auto py-4 ${
+                    viewMode === "continuous" ? "px-4" : "flex justify-center px-12"
+                  } ${fillHeight ? "h-full" : ""}`}
+                >
+                  <div
+                    className={
+                      viewMode === "continuous" ? "flex flex-col items-center" : undefined
+                    }
+                  >
               {(viewMode === "continuous" && numPages > 0
                 ? Array.from({ length: numPages }, (_, i) => i + 1)
                 : [pageNumber]
@@ -2999,8 +3111,11 @@ export default function PdfViewer({
                 </div>
                 );
               })}
-            </Document>
-          </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Document>
         )}
       </div>
 
