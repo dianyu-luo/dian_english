@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Document, Outline, Page, pdfjs } from "react-pdf";
+import { Document, Page, pdfjs } from "react-pdf";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import {
@@ -14,6 +15,7 @@ import {
 } from "./get-selected-word";
 import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "./markdown";
+import { PdfOutlinePanel } from "./pdf-outline-panel";
 import {
   PIN_KINDS,
   PINS_API,
@@ -133,17 +135,6 @@ const CONTINUOUS_MOUNT_ALL_LIMIT = 30;
 const A4_ASPECT = 297 / 210;
 
 type PdfViewMode = "paged" | "continuous";
-
-type OutlineStatus = "loading" | "ready" | "empty" | "error";
-
-const OUTLINE_CLASSName = [
-  "text-sm text-[#1c1917]",
-  "[&>ul]:m-0 [&>ul]:list-none [&>ul]:space-y-0.5 [&>ul]:p-0",
-  "[&_ul]:m-0 [&_ul]:list-none [&_ul]:space-y-0.5 [&_ul]:p-0",
-  "[&_ul_ul]:ml-2 [&_ul_ul]:border-l [&_ul_ul]:border-[#e7e2d9] [&_ul_ul]:pl-2",
-  "[&_a]:block [&_a]:rounded-md [&_a]:px-2 [&_a]:py-1.5 [&_a]:leading-snug [&_a]:text-[#1c1917] [&_a]:no-underline",
-  "hover:[&_a]:bg-[#efebe4]",
-].join(" ");
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
@@ -556,7 +547,7 @@ export default function PdfViewer({
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<PdfViewMode>(readPdfViewMode);
   const [outlineOpen, setOutlineOpen] = useState(false);
-  const [outlineStatus, setOutlineStatus] = useState<OutlineStatus>("loading");
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [pageAspect, setPageAspect] = useState(A4_ASPECT);
   const [draftArrow, setDraftArrow] = useState<{
     pageNumber: number;
@@ -1007,7 +998,7 @@ export default function PdfViewer({
     setHighlight(null);
     setError(null);
     setOutlineOpen(false);
-    setOutlineStatus("loading");
+    setPdfDoc(null);
     onRecentChangeRef.current?.(null);
     onWordMarksChangeRef.current?.();
   }, []);
@@ -1036,7 +1027,9 @@ export default function PdfViewer({
     [closeCurrentFile],
   );
 
-  const onDocumentLoadSuccess = useCallback(({ numPages: total }: { numPages: number }) => {
+  const onDocumentLoadSuccess = useCallback((pdf: PDFDocumentProxy) => {
+    setPdfDoc(pdf);
+    const total = pdf.numPages;
     setNumPages(total);
     const restore = restorePageRef.current;
     restorePageRef.current = null;
@@ -1114,19 +1107,7 @@ export default function PdfViewer({
   }, []);
 
   const toggleOutline = useCallback(() => {
-    setOutlineOpen((open) => {
-      if (!open) setOutlineStatus("loading");
-      return !open;
-    });
-  }, []);
-
-  const onOutlineLoadSuccess = useCallback((outline: unknown) => {
-    const items = Array.isArray(outline) ? outline : null;
-    setOutlineStatus(items && items.length > 0 ? "ready" : "empty");
-  }, []);
-
-  const onOutlineLoadError = useCallback(() => {
-    setOutlineStatus("error");
+    setOutlineOpen((open) => !open);
   }, []);
 
   const changeViewMode = useCallback((mode: PdfViewMode) => {
@@ -1364,7 +1345,6 @@ export default function PdfViewer({
     closeWordMarkEditor();
     closeSelectionMenu();
     setOutlineOpen(false);
-    setOutlineStatus("loading");
     setDrawTool(null);
     setDraftArrow(null);
     setSelectedAnnotationId(null);
@@ -2535,53 +2515,13 @@ export default function PdfViewer({
             }
           >
             <div className="relative flex min-h-0 w-full flex-1">
-              {outlineOpen ? (
-                <aside
-                  className="absolute inset-y-0 left-0 z-30 flex w-[min(100%,16rem)] flex-col border-r border-[#e7e2d9] bg-[#faf8f4] shadow-md sm:relative sm:z-auto sm:w-56 sm:shadow-none"
-                  aria-label="PDF 目录"
-                >
-                  <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#ebe6dc] px-3 py-2">
-                    <span className="text-sm font-medium text-[#1c1917]">目录</span>
-                    <button
-                      type="button"
-                      onClick={() => setOutlineOpen(false)}
-                      aria-label="关闭目录"
-                      className="flex h-6 w-6 items-center justify-center rounded-md text-[#a8a29e] transition-colors hover:bg-[#efebe4] hover:text-[#1c1917]"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-                        <path
-                          d="M3 3l6 6M9 3l-6 6"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
-                    {outlineStatus === "empty" ? (
-                      <p className="px-2 py-3 text-sm leading-6 text-[#78716c]">
-                        此 PDF 没有目录
-                      </p>
-                    ) : null}
-                    {outlineStatus === "error" ? (
-                      <p className="px-2 py-3 text-sm leading-6 text-[#b91c1c]">
-                        目录加载失败
-                      </p>
-                    ) : null}
-                    {outlineStatus === "loading" ? (
-                      <p className="px-2 py-3 text-sm leading-6 text-[#78716c]">加载目录…</p>
-                    ) : null}
-                    <Outline
-                      className={`${OUTLINE_CLASSName}${
-                        outlineStatus === "ready" ? "" : " hidden"
-                      }`}
-                      onItemClick={onItemClick}
-                      onLoadSuccess={onOutlineLoadSuccess}
-                      onLoadError={onOutlineLoadError}
-                    />
-                  </div>
-                </aside>
+              {outlineOpen && pdfDoc ? (
+                <PdfOutlinePanel
+                  pdf={pdfDoc}
+                  currentPage={pageNumber}
+                  onNavigate={(target) => onItemClick({ pageNumber: target })}
+                  onClose={() => setOutlineOpen(false)}
+                />
               ) : null}
 
               <div className="relative min-h-0 min-w-0 flex-1">
