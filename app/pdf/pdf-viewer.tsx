@@ -663,6 +663,32 @@ export default function PdfViewer({
     return () => observer.disconnect();
   }, []);
 
+  // Ctrl/⌘ + 滚轮：缩放 PDF，避免浏览器整页缩放
+  useEffect(() => {
+    if (!file) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      if (paused) return;
+
+      let delta = e.deltaY;
+      if (e.deltaMode === 1) delta *= 16;
+      else if (e.deltaMode === 2) delta *= 100;
+      if (delta === 0) return;
+
+      if (viewModeRef.current === "continuous") {
+        pendingScrollPageRef.current = pageNumberRef.current;
+      }
+      setScale((s) => clampScale(s * Math.exp(-delta * 0.0018)));
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [file, paused]);
+
   const showHighlight = useCallback(
     (rects: PdfHighlightRect[], word: string, page: number) => {
       const next = rects.filter((r) => r.width > 0 && r.height > 0);
