@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Document, Page, pdfjs } from "react-pdf";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import {
+  createWordSelectInfo,
   getSelectedWordInfo,
   isEnglishWord,
   resolveHighlightRects,
   type OnPdfWordSelect,
   type PdfWordSelectInfo,
 } from "./get-selected-word";
+import { findWordAtPagePoint } from "@/lib/pdf/text-hit-test";
 import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "./markdown";
 import { PdfOutlinePanel } from "./pdf-outline-panel";
@@ -30,6 +32,28 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url,
 ).toString();
+
+/** 中文 Windows 下 generic serif 会落到宋体，文本层量宽与 canvas 字形错位 */
+function patchPdfjsTextLayerFonts() {
+  try {
+    const TextLayer = (
+      pdfjs as typeof pdfjs & {
+        TextLayer?: { fontFamilyMap: Map<string, string> };
+      }
+    ).TextLayer;
+    if (!TextLayer?.fontFamilyMap) return;
+    const map = TextLayer.fontFamilyMap;
+    if (!map.has("serif")) {
+      map.set("serif", "Times New Roman, Times, serif");
+    }
+    const sans = map.get("sans-serif") ?? "sans-serif";
+    if (!sans.includes("Arial")) {
+      map.set("sans-serif", `Arial, Helvetica, ${sans}`);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 type PdfSource = File | string | null;
 
@@ -528,6 +552,11 @@ export default function PdfViewer({
     pageNumber: number;
     rects: PdfHighlightRect[];
   } | null>(null);
+  const [pickHighlight, setPickHighlight] = useState<{
+    word: string;
+    pageNumber: number;
+    rects: PdfHighlightRect[];
+  } | null>(null);
   const [pageInput, setPageInput] = useState("1");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
@@ -557,6 +586,7 @@ export default function PdfViewer({
     y2: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageProxyRef = useRef<Map<number, PDFPageProxy>>(new Map());
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -836,22 +866,7 @@ export default function PdfViewer({
     };
   }, [jumpRequest, showHighlight]);
 
-  const handleTextSelect = useCallback((e: globalThis.MouseEvent) => {
-    if (e.button !== 0) return;
-    const el = containerRef.current;
-    const sel = window.getSelection();
-    if (!el || !sel || sel.rangeCount === 0) return;
-
-    const anchor = sel.anchorNode;
-    if (!anchor || !el.contains(anchor)) return;
-
-    const info = getSelectedWordInfo({
-      selection: sel,
-      pageNumber: pageNumberRef.current,
-      fileName: fileNameRef.current,
-    });
-    if (!info) return;
-
+  const processWordSelectInfo = useCallback((info: PdfWordSelectInfo, e: globalThis.MouseEvent) => {
     onWordSelectRef.current?.(info);
 
     // 英文单词选中后自动入库（中文不算单词；不覆盖已有 note）
@@ -885,21 +900,8 @@ export default function PdfViewer({
 
     const menuW = 88;
     const menuH = 40;
-    const rangeBox = sel.getRangeAt(0).getBoundingClientRect();
-    const hasRange =
-      Number.isFinite(rangeBox.left) &&
-      Number.isFinite(rangeBox.bottom) &&
-      rangeBox.width > 0 &&
-      rangeBox.height > 0;
-
-    let preferX: number;
-    let preferY: number;
-      {
-      // 句子：出现在鼠标附近
-      preferX = e.clientX + 8;
-      preferY = e.clientY + 18;
-    }
-
+    const preferX = e.clientX + 8;
+    const preferY = e.clientY + 18;
     const x = Math.min(Math.max(8, preferX), window.innerWidth - menuW - 8);
     const y = Math.min(Math.max(8, preferY), window.innerHeight - menuH - 8);
 
@@ -911,6 +913,28 @@ export default function PdfViewer({
     setWordMarkDraft("");
     setSelectionMenu({ x, y, info });
   }, []);
+
+  const handleTextSelect = useCallback((e: globalThis.MouseEvent) => {
+    if (e.button !== 0) return;
+    // 双击选词由 dblclick 按 PDF 坐标处理，避免 mouseup 先选中错位单词
+    if (e.detail >= 2) return;
+    const el = containerRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0) return;
+
+    const anchor = sel.anchorNode;
+    if (!anchor || !el.contains(anchor)) return;
+
+    const info = getSelectedWordInfo({
+      selection: sel,
+      pageNumber: pageNumberRef.current,
+      fileName: fileNameRef.current,
+    });
+    if (!info) return;
+
+    setPickHighlight(null);
+    processWordSelectInfo(info, e);
+  }, [processWordSelectInfo]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -938,6 +962,8 @@ export default function PdfViewer({
     setUploading(true);
     setError(null);
     setHighlight(null);
+    setPickHighlight(null);
+    pageProxyRef.current.clear();
     try {
       const form = new FormData();
       form.append("file", next);
@@ -994,6 +1020,8 @@ export default function PdfViewer({
       setNumPages(0);
       setScale(clampScale(item.scale ?? 1));
       setHighlight(null);
+      setPickHighlight(null);
+      pageProxyRef.current.clear();
       setError(null);
       onRecentChangeRef.current?.(item);
     },
@@ -1022,6 +1050,8 @@ export default function PdfViewer({
     setNumPages(0);
     setScale(1);
     setHighlight(null);
+    setPickHighlight(null);
+    pageProxyRef.current.clear();
     setError(null);
     setOutlineOpen(false);
     setPdfDoc(null);
@@ -1054,6 +1084,7 @@ export default function PdfViewer({
   );
 
   const onDocumentLoadSuccess = useCallback((pdf: PDFDocumentProxy) => {
+    patchPdfjsTextLayerFonts();
     setPdfDoc(pdf);
     const total = pdf.numPages;
     setNumPages(total);
@@ -1084,6 +1115,7 @@ export default function PdfViewer({
     }
     const next = Math.min(Math.max(1, n), numPages);
     setHighlight(null);
+    setPickHighlight(null);
     setPageNumber(next);
     setPageInput(String(next));
     if (viewModeRef.current === "continuous") {
@@ -1095,6 +1127,7 @@ export default function PdfViewer({
 
   const goPrevPage = useCallback(() => {
     setHighlight(null);
+    setPickHighlight(null);
     setPageNumber((p) => {
       const next = Math.max(1, p - 1);
       if (viewModeRef.current === "continuous") {
@@ -1106,6 +1139,7 @@ export default function PdfViewer({
 
   const goNextPage = useCallback(() => {
     setHighlight(null);
+    setPickHighlight(null);
     setPageNumber((p) => {
       const next = Math.min(numPages, p + 1);
       if (viewModeRef.current === "continuous") {
@@ -1124,6 +1158,7 @@ export default function PdfViewer({
     const total = numPagesRef.current;
     const next = total > 0 ? Math.min(Math.max(1, target), total) : Math.max(1, target);
     setHighlight(null);
+    setPickHighlight(null);
     setPageNumber(next);
     if (viewModeRef.current === "continuous") {
       pendingScrollPageRef.current = next;
@@ -1204,7 +1239,8 @@ export default function PdfViewer({
   }, [highlight, pageNumber, pageWidth, centerHighlight]);
 
   const onPageLoadSuccess = useCallback(
-    (page: { originalWidth: number; originalHeight: number }) => {
+    (page: PDFPageProxy & { originalWidth: number; originalHeight: number }) => {
+      pageProxyRef.current.set(page.pageNumber, page);
       if (page.originalWidth <= 0) return;
       const aspect = page.originalHeight / page.originalWidth;
       setPageAspect((prev) => (Math.abs(prev - aspect) < 0.002 ? prev : aspect));
@@ -1236,7 +1272,10 @@ export default function PdfViewer({
     setMarkerMenu(null);
     setPinTypeSubmenuOpen(false);
   }, []);
-  const closeSelectionMenu = useCallback(() => setSelectionMenu(null), []);
+  const closeSelectionMenu = useCallback(() => {
+    setSelectionMenu(null);
+    setPickHighlight(null);
+  }, []);
 
   const closeWordMarkEditor = useCallback(() => {
     setActiveWordMarkId(null);
@@ -1430,6 +1469,51 @@ export default function PdfViewer({
     },
     [],
   );
+
+  const handleDoubleClickSelect = useCallback(
+    (e: globalThis.MouseEvent) => {
+      if (e.button !== 0) return;
+      const pageHit = getPageHit(e.clientX, e.clientY, e.target);
+      if (!pageHit) return;
+
+      const page = pageProxyRef.current.get(pageHit.pageNumber);
+      if (!page) return;
+
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+
+      const clickX = (e.clientX - pageHit.box.left) / pageHit.box.width;
+      const clickY = (e.clientY - pageHit.box.top) / pageHit.box.height;
+      void (async () => {
+        const wordHit = await findWordAtPagePoint({ page, clickX, clickY });
+        if (!wordHit) return;
+        const info = createWordSelectInfo({
+          word: wordHit.word,
+          rects: wordHit.rects,
+          pageNumber: pageHit.pageNumber,
+          fileName: fileNameRef.current,
+          contextBefore: wordHit.contextBefore,
+          contextAfter: wordHit.contextAfter,
+          pageBox: { width: pageHit.box.width, height: pageHit.box.height },
+        });
+        if (!info) return;
+        setPickHighlight({
+          pageNumber: pageHit.pageNumber,
+          word: info.word,
+          rects: info.rects,
+        });
+        processWordSelectInfo(info, e);
+      })();
+    },
+    [getPageHit, processWordSelectInfo],
+  );
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener("dblclick", handleDoubleClickSelect);
+    return () => el.removeEventListener("dblclick", handleDoubleClickSelect);
+  }, [handleDoubleClickSelect, file]);
 
   const getPageNormPoint = useCallback(
     (clientX: number, clientY: number, target?: EventTarget | null): (NormPoint & { pageNumber: number }) | null => {
@@ -2716,6 +2800,22 @@ export default function PdfViewer({
                         aria-label={i === 0 ? `高亮 ${highlight.word}` : undefined}
                         aria-hidden={i === 0 ? undefined : true}
                         className="pointer-events-none absolute z-10 bg-[#fbbf24]/55 ring-1 ring-[#d97706] transition-opacity"
+                        style={{
+                          left: `${r.left * 100}%`,
+                          top: `${r.top * 100}%`,
+                          width: `${Math.max(r.width, 0.01) * 100}%`,
+                          height: `${Math.max(r.height, 0.008) * 100}%`,
+                        }}
+                      />
+                    ))
+                  : null}
+                {pickHighlight && pickHighlight.pageNumber === sheetPage
+                  ? pickHighlight.rects.map((r, i) => (
+                      <div
+                        key={`pick-hl-${i}`}
+                        aria-label={i === 0 ? `选中 ${pickHighlight.word}` : undefined}
+                        aria-hidden={i === 0 ? undefined : true}
+                        className="pointer-events-none absolute z-[12] bg-[#3b82f6]/35 ring-1 ring-[#2563eb]/70"
                         style={{
                           left: `${r.left * 100}%`,
                           top: `${r.top * 100}%`,

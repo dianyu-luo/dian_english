@@ -228,6 +228,46 @@ export function buildWordLocator(
   });
 }
 
+/** 由 PDF 坐标命中结果构造选词信息（不依赖 DOM 文本层） */
+export function createWordSelectInfo(options: {
+  word: string;
+  rects: PdfWordRect[];
+  pageNumber: number;
+  fileName: string;
+  contextBefore: string;
+  contextAfter: string;
+  pageBox: { width: number; height: number };
+}): PdfWordSelectInfo | null {
+  const rects = mergeLineRects(options.rects);
+  if (rects.length === 0) return null;
+
+  const rect = unionRects(rects);
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const base = {
+    word: options.word,
+    raw: options.word,
+    type: "word" as const,
+    pageNumber: options.pageNumber,
+    fileName: options.fileName,
+    rect,
+    rects,
+    contextBefore: options.contextBefore,
+    contextAfter: options.contextAfter,
+  };
+
+  return {
+    ...base,
+    pixelRect: {
+      left: round4(rect.left * options.pageBox.width),
+      top: round4(rect.top * options.pageBox.height),
+      width: round4(rect.width * options.pageBox.width),
+      height: round4(rect.height * options.pageBox.height),
+    },
+    locator: buildWordLocator(base),
+  };
+}
+
 /** 从 Selection 收集可复用的单词位置信息 */
 export function getSelectedWordInfo(options: {
   selection?: Selection | null;

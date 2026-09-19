@@ -149,3 +149,17 @@ body {
   line-height: 2.15;
   overflow: visible;
 }
+
+/* PDF 文本层：避免继承页面字体/抗锯齿，保证与 canvas 对齐 */
+.react-pdf__Page .textLayer {
+  line-height: 1;
+  letter-spacing: 0;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+.react-pdf__Page .textLayer :is(span, br) {
+  line-height: 1;
+  letter-spacing: 0;
+  font-synthesis: none;
+}
