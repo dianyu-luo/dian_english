@@ -156,6 +156,7 @@ const ARROW_STROKE_WIDTH = 2.5;
 const MIN_ARROW_DRAG_PX = 6;
 const LAST_ANNOTATE_TOOL_KEY = "pdf-last-annotate-tool";
 const LAST_TODO_KIND_KEY = "pdf-last-todo-kind";
+const SUBMENU_CLOSE_MS = 180;
 const PDF_VIEW_MODE_KEY = "pdf-view-mode";
 const CONTINUOUS_PAGE_BUFFER = 4;
 const CONTINUOUS_MOUNT_ALL_LIMIT = 30;
@@ -715,6 +716,8 @@ export default function PdfViewer({
   } | null>(null);
   const lastPinClickRef = useRef<{ key: string; time: number } | null>(null);
   const hoverPinTimerRef = useRef<number | null>(null);
+  const submenuCloseTimerRef = useRef<number | null>(null);
+  const pinTypeCloseTimerRef = useRef<number | null>(null);
   const hoveredPinRef = useRef(hoveredPin);
   hoveredPinRef.current = hoveredPin;
   const onWordSelectRef = useRef(onWordSelect);
@@ -1355,15 +1358,70 @@ export default function PdfViewer({
     [centerHighlight, showHighlight],
   );
 
+  const clearSubmenuCloseTimer = useCallback(() => {
+    if (submenuCloseTimerRef.current != null) {
+      window.clearTimeout(submenuCloseTimerRef.current);
+      submenuCloseTimerRef.current = null;
+    }
+  }, []);
+  const clearPinTypeCloseTimer = useCallback(() => {
+    if (pinTypeCloseTimerRef.current != null) {
+      window.clearTimeout(pinTypeCloseTimerRef.current);
+      pinTypeCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const openContextSubmenu = useCallback(
+    (which: "todo" | "annotate") => {
+      clearSubmenuCloseTimer();
+      setTodoSubmenuOpen(which === "todo");
+      setAnnotateSubmenuOpen(which === "annotate");
+    },
+    [clearSubmenuCloseTimer],
+  );
+
+  const scheduleCloseContextSubmenu = useCallback(
+    (which: "todo" | "annotate") => {
+      clearSubmenuCloseTimer();
+      submenuCloseTimerRef.current = window.setTimeout(() => {
+        if (which === "todo") setTodoSubmenuOpen(false);
+        else setAnnotateSubmenuOpen(false);
+        submenuCloseTimerRef.current = null;
+      }, SUBMENU_CLOSE_MS);
+    },
+    [clearSubmenuCloseTimer],
+  );
+
+  const dismissContextSubmenus = useCallback(() => {
+    clearSubmenuCloseTimer();
+    setTodoSubmenuOpen(false);
+    setAnnotateSubmenuOpen(false);
+  }, [clearSubmenuCloseTimer]);
+
   const closeContextMenu = useCallback(() => {
+    clearSubmenuCloseTimer();
     setContextMenu(null);
     setAnnotateSubmenuOpen(false);
     setTodoSubmenuOpen(false);
-  }, []);
+  }, [clearSubmenuCloseTimer]);
   const closeMarkerMenu = useCallback(() => {
+    clearPinTypeCloseTimer();
     setMarkerMenu(null);
     setPinTypeSubmenuOpen(false);
-  }, []);
+  }, [clearPinTypeCloseTimer]);
+
+  const openPinTypeSubmenu = useCallback(() => {
+    clearPinTypeCloseTimer();
+    setPinTypeSubmenuOpen(true);
+  }, [clearPinTypeCloseTimer]);
+
+  const scheduleClosePinTypeSubmenu = useCallback(() => {
+    clearPinTypeCloseTimer();
+    pinTypeCloseTimerRef.current = window.setTimeout(() => {
+      setPinTypeSubmenuOpen(false);
+      pinTypeCloseTimerRef.current = null;
+    }, SUBMENU_CLOSE_MS);
+  }, [clearPinTypeCloseTimer]);
   const closeSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
   const closeWordMarkEditor = useCallback(() => {
@@ -1438,6 +1496,13 @@ export default function PdfViewer({
   }, [clearHoverPinTimer]);
 
   useEffect(() => () => clearHoverPinTimer(), [clearHoverPinTimer]);
+  useEffect(
+    () => () => {
+      clearSubmenuCloseTimer();
+      clearPinTypeCloseTimer();
+    },
+    [clearSubmenuCloseTimer, clearPinTypeCloseTimer],
+  );
 
   const loadPins = useCallback(async (name: string) => {
     if (!name) {
@@ -3309,11 +3374,8 @@ export default function PdfViewer({
               <div
                 key={item.id}
                 className="relative"
-                onMouseEnter={() => {
-                  setAnnotateSubmenuOpen(true);
-                  setTodoSubmenuOpen(false);
-                }}
-                onMouseLeave={() => setAnnotateSubmenuOpen(false)}
+                onMouseEnter={() => openContextSubmenu("annotate")}
+                onMouseLeave={() => scheduleCloseContextSubmenu("annotate")}
               >
                 <button
                   type="button"
@@ -3326,7 +3388,7 @@ export default function PdfViewer({
                       selectAnnotateTool(lastAnnotateTool);
                       return;
                     }
-                    setAnnotateSubmenuOpen(true);
+                    openContextSubmenu("annotate");
                   }}
                 >
                   <span className="flex items-center gap-2">
@@ -3349,31 +3411,35 @@ export default function PdfViewer({
                 </button>
                 {annotateSubmenuOpen ? (
                   <div
-                    role="menu"
-                    className={`absolute top-0 z-50 flex border border-[#d6d3d1] bg-[#faf8f4] p-0.5 shadow-md ${
-                      annotateSubmenuOnLeft ? "right-full mr-0.5" : "left-full ml-0.5"
+                    className={`absolute top-0 z-50 ${
+                      annotateSubmenuOnLeft ? "right-full pr-1.5" : "left-full pl-1.5"
                     }`}
                   >
-                    {annotateSubmenuItems.map((sub) => {
-                      const Icon = sub.Icon;
-                      const active = lastAnnotateTool === sub.id;
-                      return (
-                        <button
-                          key={sub.id}
-                          type="button"
-                          role="menuitem"
-                          title={sub.label}
-                          aria-label={sub.label}
-                          aria-current={active ? "true" : undefined}
-                          className={`flex h-8 w-8 items-center justify-center text-[#1c1917] hover:bg-[#efebe4] ${
-                            active ? "bg-[#efebe4] ring-1 ring-inset ring-[#a8a29e]" : ""
-                          }`}
-                          onClick={() => selectAnnotateTool(sub.id)}
-                        >
-                          <Icon />
-                        </button>
-                      );
-                    })}
+                    <div
+                      role="menu"
+                      className="flex border border-[#d6d3d1] bg-[#faf8f4] p-0.5 shadow-md"
+                    >
+                      {annotateSubmenuItems.map((sub) => {
+                        const Icon = sub.Icon;
+                        const active = lastAnnotateTool === sub.id;
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            role="menuitem"
+                            title={sub.label}
+                            aria-label={sub.label}
+                            aria-current={active ? "true" : undefined}
+                            className={`flex h-8 w-8 items-center justify-center text-[#1c1917] hover:bg-[#efebe4] ${
+                              active ? "bg-[#efebe4] ring-1 ring-inset ring-[#a8a29e]" : ""
+                            }`}
+                            onClick={() => selectAnnotateTool(sub.id)}
+                          >
+                            <Icon />
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -3381,11 +3447,8 @@ export default function PdfViewer({
               <div
                 key={item.id}
                 className="relative"
-                onMouseEnter={() => {
-                  setTodoSubmenuOpen(true);
-                  setAnnotateSubmenuOpen(false);
-                }}
-                onMouseLeave={() => setTodoSubmenuOpen(false)}
+                onMouseEnter={() => openContextSubmenu("todo")}
+                onMouseLeave={() => scheduleCloseContextSubmenu("todo")}
               >
                 <button
                   type="button"
@@ -3398,7 +3461,7 @@ export default function PdfViewer({
                       selectTodoKind(lastTodoKind);
                       return;
                     }
-                    setTodoSubmenuOpen(true);
+                    openContextSubmenu("todo");
                   }}
                 >
                   <span className="flex items-center gap-2">
@@ -3415,32 +3478,36 @@ export default function PdfViewer({
                 </button>
                 {todoSubmenuOpen ? (
                   <div
-                    role="menu"
-                    className={`absolute top-0 z-50 min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md ${
-                      todoSubmenuOnLeft ? "right-full mr-0.5" : "left-full ml-0.5"
+                    className={`absolute top-0 z-50 ${
+                      todoSubmenuOnLeft ? "right-full pr-1.5" : "left-full pl-1.5"
                     }`}
                   >
-                    {todoSubmenuItems.map((sub) => {
-                      const Icon = sub.Icon;
-                      const active = lastTodoKind === sub.id;
-                      return (
-                        <button
-                          key={sub.id}
-                          type="button"
-                          role="menuitem"
-                          aria-current={active ? "true" : undefined}
-                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4] ${
-                            active ? "bg-[#efebe4]" : ""
-                          }`}
-                          onClick={() => selectTodoKind(sub.id)}
-                        >
-                          <span className="inline-flex text-[#57534e]" aria-hidden>
-                            <Icon />
-                          </span>
-                          {sub.label}
-                        </button>
-                      );
-                    })}
+                    <div
+                      role="menu"
+                      className="min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
+                    >
+                      {todoSubmenuItems.map((sub) => {
+                        const Icon = sub.Icon;
+                        const active = lastTodoKind === sub.id;
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            role="menuitem"
+                            aria-current={active ? "true" : undefined}
+                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4] ${
+                              active ? "bg-[#efebe4]" : ""
+                            }`}
+                            onClick={() => selectTodoKind(sub.id)}
+                          >
+                            <span className="inline-flex text-[#57534e]" aria-hidden>
+                              <Icon />
+                            </span>
+                            {sub.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -3450,6 +3517,7 @@ export default function PdfViewer({
                 type="button"
                 role="menuitem"
                 className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+                onMouseEnter={dismissContextSubmenus}
                 onClick={() => {
                   if (item.id === "question" || item.id === "note" || item.id === "bookmark") {
                     void handleAddPin(item.id);
@@ -3476,8 +3544,8 @@ export default function PdfViewer({
             <>
               <div
                 className="relative"
-                onMouseEnter={() => setPinTypeSubmenuOpen(true)}
-                onMouseLeave={() => setPinTypeSubmenuOpen(false)}
+                onMouseEnter={openPinTypeSubmenu}
+                onMouseLeave={scheduleClosePinTypeSubmenu}
               >
                 <button
                   type="button"
@@ -3494,22 +3562,26 @@ export default function PdfViewer({
                 </button>
                 {pinTypeSubmenuOpen ? (
                   <div
-                    role="menu"
-                    className={`absolute top-0 z-50 min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md ${
-                      pinTypeSubmenuOnLeft ? "right-full mr-0.5" : "left-full ml-0.5"
+                    className={`absolute top-0 z-50 ${
+                      pinTypeSubmenuOnLeft ? "right-full pr-1.5" : "left-full pl-1.5"
                     }`}
                   >
-                    {PIN_KINDS.filter((k) => k !== markerMenu.kind).map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        role="menuitem"
-                        className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                        onClick={() => void changePinType(markerMenu.pin, k)}
-                      >
-                        {pinKindLabel(k)}
-                      </button>
-                    ))}
+                    <div
+                      role="menu"
+                      className="min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
+                    >
+                      {PIN_KINDS.filter((k) => k !== markerMenu.kind).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          role="menuitem"
+                          className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
+                          onClick={() => void changePinType(markerMenu.pin, k)}
+                        >
+                          {pinKindLabel(k)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
