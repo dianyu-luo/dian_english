@@ -552,11 +552,6 @@ export default function PdfViewer({
     pageNumber: number;
     rects: PdfHighlightRect[];
   } | null>(null);
-  const [pickHighlight, setPickHighlight] = useState<{
-    word: string;
-    pageNumber: number;
-    rects: PdfHighlightRect[];
-  } | null>(null);
   const [pageInput, setPageInput] = useState("1");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
@@ -932,7 +927,6 @@ export default function PdfViewer({
     });
     if (!info) return;
 
-    setPickHighlight(null);
     processWordSelectInfo(info, e);
   }, [processWordSelectInfo]);
 
@@ -962,7 +956,6 @@ export default function PdfViewer({
     setUploading(true);
     setError(null);
     setHighlight(null);
-    setPickHighlight(null);
     pageProxyRef.current.clear();
     try {
       const form = new FormData();
@@ -1020,7 +1013,6 @@ export default function PdfViewer({
       setNumPages(0);
       setScale(clampScale(item.scale ?? 1));
       setHighlight(null);
-      setPickHighlight(null);
       pageProxyRef.current.clear();
       setError(null);
       onRecentChangeRef.current?.(item);
@@ -1050,7 +1042,6 @@ export default function PdfViewer({
     setNumPages(0);
     setScale(1);
     setHighlight(null);
-    setPickHighlight(null);
     pageProxyRef.current.clear();
     setError(null);
     setOutlineOpen(false);
@@ -1115,7 +1106,6 @@ export default function PdfViewer({
     }
     const next = Math.min(Math.max(1, n), numPages);
     setHighlight(null);
-    setPickHighlight(null);
     setPageNumber(next);
     setPageInput(String(next));
     if (viewModeRef.current === "continuous") {
@@ -1127,7 +1117,6 @@ export default function PdfViewer({
 
   const goPrevPage = useCallback(() => {
     setHighlight(null);
-    setPickHighlight(null);
     setPageNumber((p) => {
       const next = Math.max(1, p - 1);
       if (viewModeRef.current === "continuous") {
@@ -1139,7 +1128,6 @@ export default function PdfViewer({
 
   const goNextPage = useCallback(() => {
     setHighlight(null);
-    setPickHighlight(null);
     setPageNumber((p) => {
       const next = Math.min(numPages, p + 1);
       if (viewModeRef.current === "continuous") {
@@ -1158,7 +1146,6 @@ export default function PdfViewer({
     const total = numPagesRef.current;
     const next = total > 0 ? Math.min(Math.max(1, target), total) : Math.max(1, target);
     setHighlight(null);
-    setPickHighlight(null);
     setPageNumber(next);
     if (viewModeRef.current === "continuous") {
       pendingScrollPageRef.current = next;
@@ -1272,10 +1259,7 @@ export default function PdfViewer({
     setMarkerMenu(null);
     setPinTypeSubmenuOpen(false);
   }, []);
-  const closeSelectionMenu = useCallback(() => {
-    setSelectionMenu(null);
-    setPickHighlight(null);
-  }, []);
+  const closeSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
   const closeWordMarkEditor = useCallback(() => {
     setActiveWordMarkId(null);
@@ -1479,9 +1463,6 @@ export default function PdfViewer({
       const page = pageProxyRef.current.get(pageHit.pageNumber);
       if (!page) return;
 
-      e.preventDefault();
-      window.getSelection()?.removeAllRanges();
-
       const clickX = (e.clientX - pageHit.box.left) / pageHit.box.width;
       const clickY = (e.clientY - pageHit.box.top) / pageHit.box.height;
       void (async () => {
@@ -1497,11 +1478,6 @@ export default function PdfViewer({
           pageBox: { width: pageHit.box.width, height: pageHit.box.height },
         });
         if (!info) return;
-        setPickHighlight({
-          pageNumber: pageHit.pageNumber,
-          word: info.word,
-          rects: info.rects,
-        });
         processWordSelectInfo(info, e);
       })();
     },
@@ -2800,22 +2776,6 @@ export default function PdfViewer({
                         aria-label={i === 0 ? `高亮 ${highlight.word}` : undefined}
                         aria-hidden={i === 0 ? undefined : true}
                         className="pointer-events-none absolute z-10 bg-[#fbbf24]/55 ring-1 ring-[#d97706] transition-opacity"
-                        style={{
-                          left: `${r.left * 100}%`,
-                          top: `${r.top * 100}%`,
-                          width: `${Math.max(r.width, 0.01) * 100}%`,
-                          height: `${Math.max(r.height, 0.008) * 100}%`,
-                        }}
-                      />
-                    ))
-                  : null}
-                {pickHighlight && pickHighlight.pageNumber === sheetPage
-                  ? pickHighlight.rects.map((r, i) => (
-                      <div
-                        key={`pick-hl-${i}`}
-                        aria-label={i === 0 ? `选中 ${pickHighlight.word}` : undefined}
-                        aria-hidden={i === 0 ? undefined : true}
-                        className="pointer-events-none absolute z-[12] bg-[#3b82f6]/35 ring-1 ring-[#2563eb]/70"
                         style={{
                           left: `${r.left * 100}%`,
                           top: `${r.top * 100}%`,
