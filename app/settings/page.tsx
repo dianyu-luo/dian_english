@@ -275,6 +275,8 @@ export default function SettingsPage() {
                 { label: "问题", color: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]" },
                 { label: "书签", color: "border-[#fdba74] bg-[#fff7ed] text-[#c2410c]" },
                 { label: "待办", color: "border-[#5eead4] bg-[#f0fdfa] text-[#0f766e]" },
+                { label: "复习", color: "border-[#c4b5fd] bg-[#f5f3ff] text-[#6d28d9]" },
+                { label: "精读", color: "border-[#93c5fd] bg-[#eff6ff] text-[#1d4ed8]" },
               ].map(({ label, color }) => (
                 <span key={label} className={`border px-2 py-0.5 text-xs ${color}`}>
                   {label}

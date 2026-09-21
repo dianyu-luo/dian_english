@@ -10,9 +10,22 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
-export type PinKind = "question" | "note" | "bookmark" | "todo";
+export type TodoKind = "review" | "todo" | "intensive";
+export type PinKind = "question" | "note" | "bookmark" | TodoKind;
 
-export const PIN_KINDS: readonly PinKind[] = ["note", "question", "bookmark", "todo"];
+export const TODO_KINDS: readonly TodoKind[] = ["review", "todo", "intensive"];
+export const PIN_KINDS: readonly PinKind[] = [
+  "note",
+  "question",
+  "bookmark",
+  "review",
+  "todo",
+  "intensive",
+];
+
+export function isTodoKind(kind: string): kind is TodoKind {
+  return kind === "review" || kind === "todo" || kind === "intensive";
+}
 
 export const PINS_API = "/api/pdf/pins";
 
@@ -38,6 +51,10 @@ export function pinKindLabel(kind: PinKind): string {
       return "书签";
     case "todo":
       return "待办";
+    case "review":
+      return "复习";
+    case "intensive":
+      return "精读";
   }
 }
 
@@ -78,6 +95,24 @@ function pinEditorTheme(kind: PinKind) {
         focus:
           "focus:border-[#0f766e]/70 focus:ring-2 focus:ring-[#0f766e]/15",
         save: "bg-[#0f766e] hover:bg-[#115e59]",
+      };
+    case "review":
+      return {
+        bar: "bg-[#7c3aed]",
+        badge: "bg-[#f5f3ff] text-[#6d28d9] ring-1 ring-inset ring-[#c4b5fd]/80",
+        icon: "text-[#7c3aed]",
+        focus:
+          "focus:border-[#7c3aed]/70 focus:ring-2 focus:ring-[#7c3aed]/15",
+        save: "bg-[#6d28d9] hover:bg-[#5b21b6]",
+      };
+    case "intensive":
+      return {
+        bar: "bg-[#2563eb]",
+        badge: "bg-[#eff6ff] text-[#1d4ed8] ring-1 ring-inset ring-[#93c5fd]/80",
+        icon: "text-[#2563eb]",
+        focus:
+          "focus:border-[#2563eb]/70 focus:ring-2 focus:ring-[#2563eb]/15",
+        save: "bg-[#1d4ed8] hover:bg-[#1e40af]",
       };
   }
 }
@@ -143,6 +178,39 @@ function PinKindIcon({ kind }: { kind: PinKind }) {
           <path d="M5.2 8.1 7.1 10l3.7-4.2" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
+    case "review":
+      return (
+        <svg {...common}>
+          <path
+            d="M12.4 6.2A4.6 4.6 0 0 0 3.8 7.4"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          />
+          <path d="M12.4 6.2 10.7 4.4M12.4 6.2 10.6 7.8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+          <path
+            d="M3.6 9.8A4.6 4.6 0 0 0 12.2 8.6"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          />
+          <path d="M3.6 9.8 5.3 11.6M3.6 9.8 5.4 8.2" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      );
+    case "intensive":
+      return (
+        <svg {...common}>
+          <path
+            d="M2.5 3.75h5c.85 0 1.6.35 2 .9  .4-.55 1.15-.9 2-.9h4.5v8.5h-4.5c-.85 0-1.6.3-2 .85-.4-.55-1.15-.85-2-.85h-5V3.75Z"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinejoin="round"
+            fill="currentColor"
+            fillOpacity="0.12"
+          />
+          <path d="M8 4.7v8.4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      );
   }
 }
 
@@ -152,6 +220,10 @@ function pinPlaceholder(kind: PinKind) {
       return "写下你的问题…";
     case "todo":
       return "记下待办事项…";
+    case "review":
+      return "记下要复习的要点…";
+    case "intensive":
+      return "记下精读笔记…";
     case "bookmark":
       return "给书签加一句备注…";
     case "note":
@@ -308,7 +380,7 @@ export function usePinEditor({
       if (pinEditorRef.current?.contains(target)) return;
       if (
         (target as Element).closest?.(
-          "[data-question-marker],[data-note-marker],[data-bookmark-marker],[data-todo-marker]",
+          "[data-pin-marker]",
         )
       ) {
         return;

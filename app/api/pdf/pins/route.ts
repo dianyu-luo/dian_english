@@ -3,7 +3,14 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pdfPins } from "@/lib/db/schema";
 
-const PIN_TYPES = new Set(["question", "note", "bookmark", "todo"]);
+const PIN_TYPES = new Set([
+  "question",
+  "note",
+  "bookmark",
+  "todo",
+  "review",
+  "intensive",
+]);
 
 type Rect = {
   left?: number;
@@ -32,7 +39,9 @@ function isValidRect(rect: Rect | undefined): rect is Required<Rect> {
   );
 }
 
-function isPinType(type: unknown): type is "question" | "note" | "bookmark" | "todo" {
+function isPinType(
+  type: unknown,
+): type is "question" | "note" | "bookmark" | "todo" | "review" | "intensive" {
   return typeof type === "string" && PIN_TYPES.has(type);
 }
 

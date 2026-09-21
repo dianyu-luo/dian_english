@@ -27,6 +27,8 @@ describe("type labels", () => {
     expect(pinTypeLabel("question")).toBe("问题");
     expect(pinTypeLabel("bookmark")).toBe("书签");
     expect(pinTypeLabel("todo")).toBe("待办");
+    expect(pinTypeLabel("review")).toBe("复习");
+    expect(pinTypeLabel("intensive")).toBe("精读");
     expect(pinTypeLabel("note")).toBe("笔记");
     expect(annotationTypeLabel("circle")).toBe("圆形");
     expect(annotationTypeLabel("rect")).toBe("矩形");

@@ -29,6 +29,8 @@ const RECENT_EDIT_BADGE: Record<RecentEditColor, string> = {
   note: "border-[#cbd5e1] bg-[#f1f5f9] text-[#475569]",
   bookmark: "border-[#fdba74] bg-[#fff7ed] text-[#c2410c]",
   todo: "border-[#5eead4] bg-[#f0fdfa] text-[#0f766e]",
+  review: "border-[#c4b5fd] bg-[#f5f3ff] text-[#6d28d9]",
+  intensive: "border-[#93c5fd] bg-[#eff6ff] text-[#1d4ed8]",
   annotation: "border-[#fca5a5] bg-[#fef2f2] text-[#b91c1c]",
 };
 
@@ -40,7 +42,9 @@ const FILTERS: { id: EditFilter; label: string }[] = [
   { id: "question", label: "问题" },
   { id: "note", label: "笔记" },
   { id: "bookmark", label: "书签" },
+  { id: "review", label: "复习" },
   { id: "todo", label: "待办" },
+  { id: "intensive", label: "精读" },
   { id: "annotation", label: "批注" },
 ];
 
@@ -78,7 +82,9 @@ export function RecentEditsSection({
       question: 0,
       note: 0,
       bookmark: 0,
+      review: 0,
       todo: 0,
+      intensive: 0,
       annotation: 0,
     };
     for (const item of pageItems) {

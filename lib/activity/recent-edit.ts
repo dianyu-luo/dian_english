@@ -22,6 +22,8 @@ export type RecentEditColor =
   | "note"
   | "bookmark"
   | "todo"
+  | "review"
+  | "intensive"
   | "annotation";
 
 export type WordMarkEditRow = {
@@ -85,6 +87,10 @@ export function pinTypeLabel(type: string): string {
       return "书签";
     case "todo":
       return "待办";
+    case "review":
+      return "复习";
+    case "intensive":
+      return "精读";
     default:
       return "笔记";
   }
@@ -106,7 +112,13 @@ export function recentEditColor(
 ): RecentEditColor {
   if (item.kind === "note") return "word";
   if (item.kind === "annotation") return "annotation";
-  if (item.type === "question" || item.type === "bookmark" || item.type === "todo") {
+  if (
+    item.type === "question" ||
+    item.type === "bookmark" ||
+    item.type === "todo" ||
+    item.type === "review" ||
+    item.type === "intensive"
+  ) {
     return item.type;
   }
   return "note";

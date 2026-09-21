@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "../markdown";
 
-export type NoteSaveKind = "word" | "question" | "note" | "bookmark" | "todo";
+export type NoteSaveKind =
+  | "word"
+  | "question"
+  | "note"
+  | "bookmark"
+  | "todo"
+  | "review"
+  | "intensive";
 
 async function persistNoteMarkdown(kind: NoteSaveKind, id: number, markdown: string) {
   if (kind === "word") {
