@@ -19,7 +19,6 @@ import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "./markdown";
 import { PdfOutlinePanel } from "./pdf-outline-panel";
 import {
-  PIN_KINDS,
   PINS_API,
   PinEditorPanel,
   isTodoKind,
@@ -29,6 +28,13 @@ import {
   type PinKind,
   type TodoKind,
 } from "./pin-editor";
+import {
+  PdfMarkerMenu,
+  PdfPageContextMenu,
+  TodoKindIcon,
+  usePdfContextMenus,
+  type AnnotateToolId,
+} from "./context-menu";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -96,13 +102,6 @@ type PdfViewerProps = {
   paused?: boolean;
 };
 
-type ContextMenuState = {
-  x: number;
-  y: number;
-  pageNumber: number;
-  rect: PdfHighlightRect;
-};
-
 type SelectionMenuState = {
   x: number;
   y: number;
@@ -139,13 +138,7 @@ type PdfAnnotation = {
   strokeWidth: number;
 };
 
-type MarkerMenuState =
-  | { x: number; y: number; kind: PinKind; pin: PdfPin }
-  | { x: number; y: number; kind: "arrow"; annotation: PdfAnnotation };
-
 type DrawTool = "arrow" | null;
-
-type AnnotateToolId = "arrow" | "circle" | "rect";
 
 type NormPoint = { x: number; y: number };
 
@@ -154,9 +147,6 @@ const PIN_DOUBLE_CLICK_MS = 400;
 const ARROW_COLOR = "#dc2626";
 const ARROW_STROKE_WIDTH = 2.5;
 const MIN_ARROW_DRAG_PX = 6;
-const LAST_ANNOTATE_TOOL_KEY = "pdf-last-annotate-tool";
-const LAST_TODO_KIND_KEY = "pdf-last-todo-kind";
-const SUBMENU_CLOSE_MS = 180;
 const PDF_VIEW_MODE_KEY = "pdf-view-mode";
 const CONTINUOUS_PAGE_BUFFER = 4;
 const CONTINUOUS_MOUNT_ALL_LIMIT = 30;
@@ -180,42 +170,6 @@ function pinMarkerStyle(pin: { rectLeft: number; rectTop: number }) {
     width: QUESTION_MARKER_PX,
     height: QUESTION_MARKER_PX,
   };
-}
-
-function readLastAnnotateTool(): AnnotateToolId | null {
-  try {
-    const value = localStorage.getItem(LAST_ANNOTATE_TOOL_KEY);
-    if (value === "arrow" || value === "circle" || value === "rect") return value;
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function writeLastAnnotateTool(tool: AnnotateToolId) {
-  try {
-    localStorage.setItem(LAST_ANNOTATE_TOOL_KEY, tool);
-  } catch {
-    // ignore
-  }
-}
-
-function readLastTodoKind(): TodoKind | null {
-  try {
-    const value = localStorage.getItem(LAST_TODO_KIND_KEY);
-    if (value === "review" || value === "todo" || value === "intensive") return value;
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function writeLastTodoKind(kind: TodoKind) {
-  try {
-    localStorage.setItem(LAST_TODO_KIND_KEY, kind);
-  } catch {
-    // ignore
-  }
 }
 
 function readPdfViewMode(): PdfViewMode {
@@ -249,44 +203,6 @@ function pageNumberFromFrame(frame: Element | null): number | null {
   if (!frame) return null;
   const n = Number((frame as HTMLElement).dataset.pdfPageFrame);
   return Number.isFinite(n) && n >= 1 ? n : null;
-}
-
-function AnnotateArrowIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
-      <path
-        d="M3.5 14.5 14.5 3.5M14.5 3.5H7.5M14.5 3.5V10.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function AnnotateCircleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
-      <circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-function AnnotateRectIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
-      <rect
-        x="3.5"
-        y="4.5"
-        width="11"
-        height="9"
-        rx="0.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-    </svg>
-  );
 }
 
 function NoteMarkerIcon() {
@@ -324,84 +240,6 @@ function BookmarkMarkerIcon() {
       />
     </svg>
   );
-}
-
-function TodoMarkerIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <rect
-        x="2.5"
-        y="2.5"
-        width="11"
-        height="11"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        fill="currentColor"
-        fillOpacity="0.12"
-      />
-      <path
-        d="M5.2 8.1 7.1 10l3.7-4.2"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ReviewMarkerIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path
-        d="M12.4 6.2A4.6 4.6 0 0 0 3.8 7.4"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-      />
-      <path
-        d="M12.4 6.2 10.7 4.4M12.4 6.2 10.6 7.8"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-      />
-      <path
-        d="M3.6 9.8A4.6 4.6 0 0 0 12.2 8.6"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-      />
-      <path
-        d="M3.6 9.8 5.3 11.6M3.6 9.8 5.4 8.2"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IntensiveMarkerIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path
-        d="M2.5 3.75h5c.85 0 1.6.35 2 .9  .4-.55 1.15-.9 2-.9h4.5v8.5h-4.5c-.85 0-1.6.3-2 .85-.4-.55-1.15-.85-2-.85h-5V3.75Z"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinejoin="round"
-        fill="currentColor"
-        fillOpacity="0.12"
-      />
-      <path d="M8 4.7v8.4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TodoKindIcon({ kind }: { kind: TodoKind }) {
-  if (kind === "review") return <ReviewMarkerIcon />;
-  if (kind === "intensive") return <IntensiveMarkerIcon />;
-  return <TodoMarkerIcon />;
 }
 
 function todoMarkerClass(kind: TodoKind, state: "hot" | "filled" | "empty") {
@@ -654,14 +492,7 @@ export default function PdfViewer({
     rects: PdfHighlightRect[];
   } | null>(null);
   const [pageInput, setPageInput] = useState("1");
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
-  const [annotateSubmenuOpen, setAnnotateSubmenuOpen] = useState(false);
-  const [lastAnnotateTool, setLastAnnotateTool] = useState<AnnotateToolId | null>(null);
-  const [todoSubmenuOpen, setTodoSubmenuOpen] = useState(false);
-  const [lastTodoKind, setLastTodoKind] = useState<TodoKind | null>(null);
-  const [markerMenu, setMarkerMenu] = useState<MarkerMenuState | null>(null);
-  const [pinTypeSubmenuOpen, setPinTypeSubmenuOpen] = useState(false);
   const [pins, setPins] = useState<PdfPin[]>([]);
   const [wordMarks, setWordMarks] = useState<PdfWordMark[]>([]);
   const [activeWordMarkId, setActiveWordMarkId] = useState<number | null>(null);
@@ -690,9 +521,7 @@ export default function PdfViewer({
   const highlightRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recentMenuRef = useRef<HTMLDivElement>(null);
-  const contextMenuRef = useRef<HTMLDivElement>(null);
   const selectionMenuRef = useRef<HTMLDivElement>(null);
-  const markerMenuRef = useRef<HTMLDivElement>(null);
   const wordMarkEditorRef = useRef<HTMLDivElement>(null);
   const closePinEditorRef = useRef<() => void>(() => {});
   const arrowStrokeRef = useRef<{
@@ -716,8 +545,6 @@ export default function PdfViewer({
   } | null>(null);
   const lastPinClickRef = useRef<{ key: string; time: number } | null>(null);
   const hoverPinTimerRef = useRef<number | null>(null);
-  const submenuCloseTimerRef = useRef<number | null>(null);
-  const pinTypeCloseTimerRef = useRef<number | null>(null);
   const hoveredPinRef = useRef(hoveredPin);
   hoveredPinRef.current = hoveredPin;
   const onWordSelectRef = useRef(onWordSelect);
@@ -738,10 +565,20 @@ export default function PdfViewer({
   const pendingScrollPageRef = useRef<number | null>(null);
   const skipScrollSyncRef = useRef(false);
 
-  useEffect(() => {
-    setLastAnnotateTool(readLastAnnotateTool());
-    setLastTodoKind(readLastTodoKind());
-  }, []);
+  const {
+    contextMenu,
+    markerMenu,
+    contextMenuRef,
+    markerMenuRef,
+    closeContextMenu,
+    closeMarkerMenu,
+    openPageContextMenu,
+    openMarkerMenu: showMarkerMenu,
+    lastAnnotateTool,
+    lastTodoKind,
+    rememberAnnotateTool,
+    rememberTodoKind,
+  } = usePdfContextMenus<PdfAnnotation>();
 
   const centerHighlight = useCallback(() => {
     const el = highlightRef.current;
@@ -1006,15 +843,13 @@ export default function PdfViewer({
     const x = Math.min(Math.max(8, preferX), window.innerWidth - menuW - 8);
     const y = Math.min(Math.max(8, preferY), window.innerHeight - menuH - 8);
 
-    setContextMenu(null);
-    setAnnotateSubmenuOpen(false);
-    setTodoSubmenuOpen(false);
-    setMarkerMenu(null);
+    closeContextMenu();
+    closeMarkerMenu();
     closePinEditorRef.current();
     setActiveWordMarkId(null);
     setWordMarkDraft("");
     setSelectionMenu({ x, y, info });
-  }, []);
+  }, [closeContextMenu, closeMarkerMenu]);
 
   const handleTextSelect = useCallback((e: globalThis.MouseEvent) => {
     if (e.button !== 0) return;
@@ -1358,70 +1193,6 @@ export default function PdfViewer({
     [centerHighlight, showHighlight],
   );
 
-  const clearSubmenuCloseTimer = useCallback(() => {
-    if (submenuCloseTimerRef.current != null) {
-      window.clearTimeout(submenuCloseTimerRef.current);
-      submenuCloseTimerRef.current = null;
-    }
-  }, []);
-  const clearPinTypeCloseTimer = useCallback(() => {
-    if (pinTypeCloseTimerRef.current != null) {
-      window.clearTimeout(pinTypeCloseTimerRef.current);
-      pinTypeCloseTimerRef.current = null;
-    }
-  }, []);
-
-  const openContextSubmenu = useCallback(
-    (which: "todo" | "annotate") => {
-      clearSubmenuCloseTimer();
-      setTodoSubmenuOpen(which === "todo");
-      setAnnotateSubmenuOpen(which === "annotate");
-    },
-    [clearSubmenuCloseTimer],
-  );
-
-  const scheduleCloseContextSubmenu = useCallback(
-    (which: "todo" | "annotate") => {
-      clearSubmenuCloseTimer();
-      submenuCloseTimerRef.current = window.setTimeout(() => {
-        if (which === "todo") setTodoSubmenuOpen(false);
-        else setAnnotateSubmenuOpen(false);
-        submenuCloseTimerRef.current = null;
-      }, SUBMENU_CLOSE_MS);
-    },
-    [clearSubmenuCloseTimer],
-  );
-
-  const dismissContextSubmenus = useCallback(() => {
-    clearSubmenuCloseTimer();
-    setTodoSubmenuOpen(false);
-    setAnnotateSubmenuOpen(false);
-  }, [clearSubmenuCloseTimer]);
-
-  const closeContextMenu = useCallback(() => {
-    clearSubmenuCloseTimer();
-    setContextMenu(null);
-    setAnnotateSubmenuOpen(false);
-    setTodoSubmenuOpen(false);
-  }, [clearSubmenuCloseTimer]);
-  const closeMarkerMenu = useCallback(() => {
-    clearPinTypeCloseTimer();
-    setMarkerMenu(null);
-    setPinTypeSubmenuOpen(false);
-  }, [clearPinTypeCloseTimer]);
-
-  const openPinTypeSubmenu = useCallback(() => {
-    clearPinTypeCloseTimer();
-    setPinTypeSubmenuOpen(true);
-  }, [clearPinTypeCloseTimer]);
-
-  const scheduleClosePinTypeSubmenu = useCallback(() => {
-    clearPinTypeCloseTimer();
-    pinTypeCloseTimerRef.current = window.setTimeout(() => {
-      setPinTypeSubmenuOpen(false);
-      pinTypeCloseTimerRef.current = null;
-    }, SUBMENU_CLOSE_MS);
-  }, [clearPinTypeCloseTimer]);
   const closeSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
   const closeWordMarkEditor = useCallback(() => {
@@ -1496,13 +1267,6 @@ export default function PdfViewer({
   }, [clearHoverPinTimer]);
 
   useEffect(() => () => clearHoverPinTimer(), [clearHoverPinTimer]);
-  useEffect(
-    () => () => {
-      clearSubmenuCloseTimer();
-      clearPinTypeCloseTimer();
-    },
-    [clearSubmenuCloseTimer, clearPinTypeCloseTimer],
-  );
 
   const loadPins = useCallback(async (name: string) => {
     if (!name) {
@@ -1709,8 +1473,7 @@ export default function PdfViewer({
 
   const selectAnnotateTool = useCallback(
     (tool: AnnotateToolId) => {
-      setLastAnnotateTool(tool);
-      writeLastAnnotateTool(tool);
+      rememberAnnotateTool(tool);
       if (tool === "arrow") {
         startArrowTool();
         return;
@@ -1718,7 +1481,7 @@ export default function PdfViewer({
       // 圆形 / 矩形绘制后续接入
       closeContextMenu();
     },
-    [startArrowTool, closeContextMenu],
+    [rememberAnnotateTool, startArrowTool, closeContextMenu],
   );
 
   const cancelDrawTool = useCallback(() => {
@@ -1840,23 +1603,13 @@ export default function PdfViewer({
       const rect = getPageNormRect(e.clientX, e.clientY, e.target);
       if (!rect) return;
       const { pageNumber: targetPage, left, top, width, height } = rect;
-      e.preventDefault();
-      closeMarkerMenu();
       closeSelectionMenu();
-      setAnnotateSubmenuOpen(false);
-      setTodoSubmenuOpen(false);
-      const menuW = 140;
-      const menuH = 160;
-      const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
-      const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
-      setContextMenu({
-        x: Math.max(8, x),
-        y: Math.max(8, y),
+      openPageContextMenu(e, {
         pageNumber: targetPage,
         rect: { left, top, width, height },
       });
     },
-    [file, booting, getPageNormRect, closeMarkerMenu, closeSelectionMenu],
+    [file, booting, getPageNormRect, closeSelectionMenu, openPageContextMenu],
   );
 
   const openMarkerMenu = useCallback(
@@ -1866,26 +1619,12 @@ export default function PdfViewer({
         | { kind: PinKind; pin: PdfPin }
         | { kind: "arrow"; annotation: PdfAnnotation },
     ) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeContextMenu();
       closeSelectionMenu();
       closePinEditor();
       closeWordMarkEditor();
-      const isPin = target.kind !== "arrow";
-      const menuW = isPin ? 132 : 120;
-      // pin：更改类型 + 删除
-      const menuH = isPin ? 72 : 48;
-      const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
-      const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
-      setPinTypeSubmenuOpen(false);
-      setMarkerMenu({
-        x: Math.max(8, x),
-        y: Math.max(8, y),
-        ...target,
-      });
+      showMarkerMenu(e, target);
     },
-    [closeContextMenu, closeSelectionMenu, closePinEditor, closeWordMarkEditor],
+    [closeSelectionMenu, closePinEditor, closeWordMarkEditor, showMarkerMenu],
   );
 
   const deleteAnnotation = useCallback(async (a: PdfAnnotation) => {
@@ -1941,11 +1680,6 @@ export default function PdfViewer({
     },
     [contextMenu, fileName, closeContextMenu, closeWordMarkEditor, closeSelectionMenu, updatePins, openPinEditor],
   );
-
-  const rememberTodoKind = useCallback((kind: TodoKind) => {
-    setLastTodoKind(kind);
-    writeLastTodoKind(kind);
-  }, []);
 
   const selectTodoKind = useCallback(
     (kind: TodoKind) => {
@@ -2228,28 +1962,6 @@ export default function PdfViewer({
     [openPinEditor, openPinMarkdownEditor, persistPinRect, updatePins],
   );
   useEffect(() => {
-    if (!contextMenu) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (contextMenuRef.current?.contains(e.target as Node)) return;
-      closeContextMenu();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeContextMenu();
-    };
-    const onScroll = () => closeContextMenu();
-
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onScroll, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [contextMenu, closeContextMenu]);
-
-  useEffect(() => {
     if (!selectionMenu) return;
 
     const onPointerDown = (e: PointerEvent) => {
@@ -2289,28 +2001,6 @@ export default function PdfViewer({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [recentMenuOpen]);
-
-  useEffect(() => {
-    if (!markerMenu) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (markerMenuRef.current?.contains(e.target as Node)) return;
-      closeMarkerMenu();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeMarkerMenu();
-    };
-    const onScroll = () => closeMarkerMenu();
-
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onScroll, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [markerMenu, closeMarkerMenu]);
 
   useEffect(() => {
     if (activeWordMarkId == null) return;
@@ -2451,42 +2141,6 @@ export default function PdfViewer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedAnnotationId, drawTool, annotations, deleteAnnotation]);
-
-  const contextMenuItems = [
-    { id: "note", label: "笔记" },
-    { id: "question", label: "问题" },
-    { id: "bookmark", label: "书签" },
-    { id: "todo", label: "待办" },
-    { id: "annotate", label: "标注" },
-    { id: "help", label: "帮助" },
-  ] as const;
-
-  const annotateSubmenuItems = [
-    { id: "arrow", label: "箭头", Icon: AnnotateArrowIcon },
-    { id: "circle", label: "圆形", Icon: AnnotateCircleIcon },
-    { id: "rect", label: "矩形", Icon: AnnotateRectIcon },
-  ] as const;
-
-  const todoSubmenuItems = [
-    { id: "review", label: "复习", Icon: ReviewMarkerIcon },
-    { id: "todo", label: "待办", Icon: TodoMarkerIcon },
-    { id: "intensive", label: "精读", Icon: IntensiveMarkerIcon },
-  ] as const;
-
-  const annotateSubmenuOnLeft = useMemo(() => {
-    if (!contextMenu || typeof window === "undefined") return false;
-    return contextMenu.x + 140 + 120 > window.innerWidth - 8;
-  }, [contextMenu]);
-
-  const todoSubmenuOnLeft = useMemo(() => {
-    if (!contextMenu || typeof window === "undefined") return false;
-    return contextMenu.x + 140 + 120 > window.innerWidth - 8;
-  }, [contextMenu]);
-
-  const pinTypeSubmenuOnLeft = useMemo(() => {
-    if (!markerMenu || typeof window === "undefined") return false;
-    return markerMenu.x + 140 + 120 > window.innerWidth - 8;
-  }, [markerMenu]);
 
   const hoveredPinItem = useMemo(() => {
     if (!hoveredPin || draggingPin || activePin || markerMenu) return null;
@@ -3363,250 +3017,35 @@ export default function PdfViewer({
       ) : null}
 
       {contextMenu ? (
-        <div
-          ref={contextMenuRef}
-          role="menu"
-          className="fixed z-50 min-w-[8.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {contextMenuItems.map((item) =>
-            item.id === "annotate" ? (
-              <div
-                key={item.id}
-                className="relative"
-                onMouseEnter={() => openContextSubmenu("annotate")}
-                onMouseLeave={() => scheduleCloseContextSubmenu("annotate")}
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  aria-haspopup="menu"
-                  aria-expanded={annotateSubmenuOpen}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                  onClick={() => {
-                    if (lastAnnotateTool) {
-                      selectAnnotateTool(lastAnnotateTool);
-                      return;
-                    }
-                    openContextSubmenu("annotate");
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <span>{item.label}</span>
-                    {lastAnnotateTool ? (
-                      <span className="inline-flex text-[#78716c]" title="上次工具" aria-hidden>
-                        {lastAnnotateTool === "arrow" ? (
-                          <AnnotateArrowIcon />
-                        ) : lastAnnotateTool === "circle" ? (
-                          <AnnotateCircleIcon />
-                        ) : (
-                          <AnnotateRectIcon />
-                        )}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="text-[#a8a29e]" aria-hidden>
-                    ›
-                  </span>
-                </button>
-                {annotateSubmenuOpen ? (
-                  <div
-                    className={`absolute top-0 z-50 ${
-                      annotateSubmenuOnLeft ? "right-full pr-1.5" : "left-full pl-1.5"
-                    }`}
-                  >
-                    <div
-                      role="menu"
-                      className="flex border border-[#d6d3d1] bg-[#faf8f4] p-0.5 shadow-md"
-                    >
-                      {annotateSubmenuItems.map((sub) => {
-                        const Icon = sub.Icon;
-                        const active = lastAnnotateTool === sub.id;
-                        return (
-                          <button
-                            key={sub.id}
-                            type="button"
-                            role="menuitem"
-                            title={sub.label}
-                            aria-label={sub.label}
-                            aria-current={active ? "true" : undefined}
-                            className={`flex h-8 w-8 items-center justify-center text-[#1c1917] hover:bg-[#efebe4] ${
-                              active ? "bg-[#efebe4] ring-1 ring-inset ring-[#a8a29e]" : ""
-                            }`}
-                            onClick={() => selectAnnotateTool(sub.id)}
-                          >
-                            <Icon />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : item.id === "todo" ? (
-              <div
-                key={item.id}
-                className="relative"
-                onMouseEnter={() => openContextSubmenu("todo")}
-                onMouseLeave={() => scheduleCloseContextSubmenu("todo")}
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  aria-haspopup="menu"
-                  aria-expanded={todoSubmenuOpen}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                  onClick={() => {
-                    if (lastTodoKind) {
-                      selectTodoKind(lastTodoKind);
-                      return;
-                    }
-                    openContextSubmenu("todo");
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <span>{item.label}</span>
-                    {lastTodoKind ? (
-                      <span className="inline-flex text-[#78716c]" title="上次类型" aria-hidden>
-                        <TodoKindIcon kind={lastTodoKind} />
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="text-[#a8a29e]" aria-hidden>
-                    ›
-                  </span>
-                </button>
-                {todoSubmenuOpen ? (
-                  <div
-                    className={`absolute top-0 z-50 ${
-                      todoSubmenuOnLeft ? "right-full pr-1.5" : "left-full pl-1.5"
-                    }`}
-                  >
-                    <div
-                      role="menu"
-                      className="min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
-                    >
-                      {todoSubmenuItems.map((sub) => {
-                        const Icon = sub.Icon;
-                        const active = lastTodoKind === sub.id;
-                        return (
-                          <button
-                            key={sub.id}
-                            type="button"
-                            role="menuitem"
-                            aria-current={active ? "true" : undefined}
-                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4] ${
-                              active ? "bg-[#efebe4]" : ""
-                            }`}
-                            onClick={() => selectTodoKind(sub.id)}
-                          >
-                            <span className="inline-flex text-[#57534e]" aria-hidden>
-                              <Icon />
-                            </span>
-                            {sub.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <button
-                key={item.id}
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                onMouseEnter={dismissContextSubmenus}
-                onClick={() => {
-                  if (item.id === "question" || item.id === "note" || item.id === "bookmark") {
-                    void handleAddPin(item.id);
-                    return;
-                  }
-                  closeContextMenu();
-                }}
-              >
-                {item.label}
-              </button>
-            ),
-          )}
-        </div>
+        <PdfPageContextMenu
+          menu={contextMenu}
+          menuRef={contextMenuRef}
+          lastAnnotateTool={lastAnnotateTool}
+          lastTodoKind={lastTodoKind}
+          onAddPin={(kind) => void handleAddPin(kind)}
+          onSelectAnnotateTool={selectAnnotateTool}
+          onSelectTodoKind={selectTodoKind}
+          onClose={closeContextMenu}
+        />
       ) : null}
 
       {markerMenu ? (
-        <div
-          ref={markerMenuRef}
-          role="menu"
-          className="fixed z-50 min-w-[7.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
-          style={{ left: markerMenu.x, top: markerMenu.y }}
-        >
-          {markerMenu.kind !== "arrow" ? (
-            <>
-              <div
-                className="relative"
-                onMouseEnter={openPinTypeSubmenu}
-                onMouseLeave={scheduleClosePinTypeSubmenu}
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  aria-haspopup="menu"
-                  aria-expanded={pinTypeSubmenuOpen}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                  onClick={() => setPinTypeSubmenuOpen((open) => !open)}
-                >
-                  <span>更改类型</span>
-                  <span className="text-[#a8a29e]" aria-hidden>
-                    ›
-                  </span>
-                </button>
-                {pinTypeSubmenuOpen ? (
-                  <div
-                    className={`absolute top-0 z-50 ${
-                      pinTypeSubmenuOnLeft ? "right-full pr-1.5" : "left-full pl-1.5"
-                    }`}
-                  >
-                    <div
-                      role="menu"
-                      className="min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
-                    >
-                      {PIN_KINDS.filter((k) => k !== markerMenu.kind).map((k) => (
-                        <button
-                          key={k}
-                          type="button"
-                          role="menuitem"
-                          className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                          onClick={() => void changePinType(markerMenu.pin, k)}
-                        >
-                          {pinKindLabel(k)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="my-1 border-t border-[#e7e2d9]" role="separator" />
-            </>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full px-3 py-1.5 text-left text-sm text-[#b91c1c] hover:bg-[#fee2e2]"
-            onClick={() => {
-              if (markerMenu.kind !== "arrow") {
-                const { kind, pin } = markerMenu;
-                closeMarkerMenu();
-                void deletePin(kind, pin);
-                return;
-              }
-              const a = markerMenu.annotation;
+        <PdfMarkerMenu
+          menu={markerMenu}
+          menuRef={markerMenuRef}
+          onChangePinType={(pin, next) => void changePinType(pin, next)}
+          onDelete={() => {
+            if (markerMenu.kind !== "arrow") {
+              const { kind, pin } = markerMenu;
               closeMarkerMenu();
-              void deleteAnnotation(a);
-            }}
-          >
-            删除
-          </button>
-        </div>
+              void deletePin(kind, pin);
+              return;
+            }
+            const a = markerMenu.annotation;
+            closeMarkerMenu();
+            void deleteAnnotation(a);
+          }}
+        />
       ) : null}
 
       {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
