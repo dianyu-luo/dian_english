@@ -8,6 +8,7 @@ export const pdfRecentReads = sqliteTable("pdf_recent_reads", {
   /** PDF 总页数 */
   totalNumber: integer("total_number").notNull().default(0),
   scale: real("scale").notNull().default(1),
+  /** 内容寻址：sha256(hex) 前 32 位 + .pdf，同一 PDF 恒定 */
   storageKey: text("storage_key").notNull(),
   fileSize: integer("file_size").notNull().default(0),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })

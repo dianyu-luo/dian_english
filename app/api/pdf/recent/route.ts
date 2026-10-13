@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from "crypto";
-import { mkdir, unlink, writeFile } from "fs/promises";
+import { createHash } from "crypto";
+import { access, mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pdfAnnotations, pdfPins, pdfRecentReads, pdfWordMarks } from "@/lib/db/schema";
@@ -17,6 +17,39 @@ function fileUrl(storageKey: string) {
 
 function isSafeStorageKey(key: string) {
   return Boolean(key) && !key.includes("..") && !key.includes("/") && !key.includes("\\");
+}
+
+/** 内容寻址：同一 PDF 始终得到相同 storage_key */
+function storageKeyFromBuffer(buffer: Buffer) {
+  const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 32);
+  return `${hash}.pdf`;
+}
+
+async function fileExists(filePath: string) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function unlinkIfUnreferenced(storageKey: string, exceptFileName?: string) {
+  if (!isSafeStorageKey(storageKey)) return;
+  const conditions = [eq(pdfRecentReads.storageKey, storageKey)];
+  if (exceptFileName) {
+    conditions.push(ne(pdfRecentReads.fileName, exceptFileName));
+  }
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(pdfRecentReads)
+    .where(and(...conditions));
+  if (Number(count) > 0) return;
+  try {
+    await unlink(path.join(pdfDir, storageKey));
+  } catch {
+    // 磁盘文件缺失时忽略
+  }
 }
 
 function clampScale(value: number) {
@@ -106,8 +139,7 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
-    const storageKey = `${hash}-${randomUUID().slice(0, 8)}.pdf`;
+    const storageKey = storageKeyFromBuffer(buffer);
 
     await mkdir(pdfDir, { recursive: true });
 
@@ -127,14 +159,12 @@ export async function POST(request: Request) {
         ? clampScale(Number(scaleRaw))
         : clampScale(existing[0]?.scale ?? 1);
 
-    let storageToUse = storageKey;
-    if (existing[0] && existing[0].fileSize === buffer.length) {
-      // 同名同大小：复用已存文件，只更新页码与时间
-      storageToUse = existing[0].storageKey;
-    } else {
-      await writeFile(path.join(pdfDir, storageKey), buffer);
+    const diskPath = path.join(pdfDir, storageKey);
+    if (!(await fileExists(diskPath))) {
+      await writeFile(diskPath, buffer);
     }
 
+    const previousKey = existing[0]?.storageKey;
     const now = new Date();
     if (existing[0]) {
       const [row] = await db
@@ -142,12 +172,15 @@ export async function POST(request: Request) {
         .set({
           pageNumber,
           scale,
-          storageKey: storageToUse,
+          storageKey,
           fileSize: buffer.length,
           updatedAt: now,
         })
         .where(eq(pdfRecentReads.fileName, fileName))
         .returning();
+      if (previousKey && previousKey !== storageKey) {
+        await unlinkIfUnreferenced(previousKey, fileName);
+      }
       return NextResponse.json({ ok: true, item: serialize(row) });
     }
 
@@ -157,7 +190,7 @@ export async function POST(request: Request) {
         fileName,
         pageNumber,
         scale,
-        storageKey: storageToUse,
+        storageKey,
         fileSize: buffer.length,
         updatedAt: now,
       })
@@ -238,14 +271,7 @@ export async function DELETE(request: Request) {
   await db.delete(pdfPins).where(eq(pdfPins.fileName, fileName));
   await db.delete(pdfAnnotations).where(eq(pdfAnnotations.fileName, fileName));
   await db.delete(pdfRecentReads).where(eq(pdfRecentReads.fileName, fileName));
-
-  if (isSafeStorageKey(existing.storageKey)) {
-    try {
-      await unlink(path.join(pdfDir, existing.storageKey));
-    } catch {
-      // 磁盘文件缺失时仍视为删除成功
-    }
-  }
+  await unlinkIfUnreferenced(existing.storageKey);
 
   return NextResponse.json({ ok: true, fileName });
 }
