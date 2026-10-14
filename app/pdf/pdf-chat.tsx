@@ -533,6 +533,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           rows={3}
+          spellCheck={false}
           placeholder={
             pendingImage
               ? "补充问题（可空，直接发送即 OCR，公式转 LaTeX）"

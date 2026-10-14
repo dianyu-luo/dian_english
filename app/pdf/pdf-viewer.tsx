@@ -2918,6 +2918,7 @@ export default function PdfViewer({
                           }
                         }}
                         rows={4}
+                        spellCheck={false}
                         placeholder="输入笔记…"
                         className="min-h-[6rem] w-full resize-none rounded-md border border-[#e7e2d9] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#1c1917] shadow-[inset_0_1px_2px_rgba(28,25,23,0.03)] outline-none transition-[border-color,box-shadow] placeholder:text-[#c4bfb8] focus:border-[#ca8a04]/70 focus:ring-2 focus:ring-[#ca8a04]/15"
                         autoFocus
