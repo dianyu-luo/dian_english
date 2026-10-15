@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
+import { getSyncStatus } from "@/lib/sync";
 import { SyncSection } from "./sync-section";
 
 export const metadata = {
@@ -73,7 +74,9 @@ const fieldClass =
 const btnClass =
   "border border-[#d6d3d1] bg-[#faf8f4] px-3 py-1.5 text-sm text-[#57534e] disabled:cursor-not-allowed disabled:opacity-60";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const syncStatus = await getSyncStatus();
+
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-[#1c1917]">
       <SiteHeader />
@@ -315,7 +318,7 @@ export default function SettingsPage() {
           </SettingRow>
         </SettingSection>
 
-        <SyncSection />
+        <SyncSection initialStatus={syncStatus} />
 
         <SettingSection
           title="数据管理"

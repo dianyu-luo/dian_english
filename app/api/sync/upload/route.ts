@@ -11,6 +11,7 @@ export async function POST() {
       remoteDbPath: result.remoteDbPath,
       manifest: result.manifest,
       history: result.history,
+      skippedDbUpload: result.skippedDbUpload,
       status,
     });
   } catch (err) {

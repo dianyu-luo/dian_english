@@ -198,6 +198,40 @@ async function main() {
     app: SYNC_APP_FOLDER,
   };
 
+  let existingHash = null;
+  if (await exists(paths.remoteManifestPath)) {
+    try {
+      const remoteManifest = JSON.parse(
+        await readFile(paths.remoteManifestPath, "utf8"),
+      );
+      existingHash = remoteManifest.contentHash || null;
+    } catch {
+      existingHash = null;
+    }
+  }
+  if (!existingHash && (await exists(paths.remoteDbPath))) {
+    const remoteBuf = await readFile(paths.remoteDbPath);
+    existingHash = createHash("sha256").update(remoteBuf).digest("hex");
+  }
+
+  if (existingHash && existingHash === contentHash) {
+    await writeFile(
+      remoteManifestTmp,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
+    await atomicMove(remoteManifestTmp, paths.remoteManifestPath);
+    await writeFile(
+      LOCAL_MANIFEST_PATH,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
+    await unlink(snapshotPath).catch(() => {});
+    console.log("skipped db upload (hash match), refreshed manifest only");
+    console.log("manifest:", JSON.stringify(manifest, null, 2));
+    return;
+  }
+
   const archived = await archiveCurrentRemote(paths);
 
   await copyFile(snapshotPath, remoteDbTmp);
