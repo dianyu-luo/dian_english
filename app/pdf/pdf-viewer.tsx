@@ -1330,14 +1330,77 @@ export default function PdfViewer({
   ]);
 
   const pausedRef = useRef(paused);
+  // 从活动等页返回时阅读器仍挂载：重新读 recent（活动页会先写入目标页），再跳页
   useEffect(() => {
     const wasPaused = pausedRef.current;
     pausedRef.current = paused;
-    if (!wasPaused || paused || !fileName) return;
-    void loadPins(fileName);
-    void loadWordMarks(fileName);
-    onWordMarksChangeRef.current?.();
-  }, [paused, fileName, loadPins, loadWordMarks]);
+    if (!wasPaused || paused) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const jump = parsePdfJumpSearch(window.location.search);
+        const wanted = jump.fileName?.trim() || fileNameRef.current;
+        if (!wanted) return;
+
+        const item = await fetchRecentByFileName(wanted);
+        if (cancelled) return;
+        if (!item) {
+          if (fileNameRef.current) {
+            void loadPins(fileNameRef.current);
+            void loadWordMarks(fileNameRef.current);
+            onWordMarksChangeRef.current?.();
+          }
+          return;
+        }
+
+        const targetPage =
+          jump.pageNumber ??
+          (Number.isFinite(item.pageNumber) && item.pageNumber >= 1
+            ? Math.floor(item.pageNumber)
+            : 1);
+
+        skipPersistRef.current = true;
+
+        if (item.fileName !== fileNameRef.current) {
+          restorePageRef.current = targetPage;
+          setFile(item.url);
+          setFileName(item.fileName);
+          setPageNumber(targetPage);
+          setNumPages(0);
+          setScale(clampScale(item.scale ?? 1));
+          setError(null);
+        } else if (targetPage !== pageNumberRef.current) {
+          setPageNumber(targetPage);
+          if (viewModeRef.current === "continuous") {
+            pendingScrollPageRef.current = targetPage;
+          } else {
+            scrollAreaRef.current?.scrollTo({ top: 0 });
+          }
+          setError(null);
+        }
+
+        onRecentChangeRef.current?.({
+          ...item,
+          pageNumber: targetPage,
+        });
+        void loadPins(item.fileName);
+        void loadWordMarks(item.fileName);
+        onWordMarksChangeRef.current?.();
+      } catch {
+        if (fileNameRef.current) {
+          void loadPins(fileNameRef.current);
+          void loadWordMarks(fileNameRef.current);
+          onWordMarksChangeRef.current?.();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paused, loadPins, loadWordMarks]);
 
   const getPageHit = useCallback(
     (
