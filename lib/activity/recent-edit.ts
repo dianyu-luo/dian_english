@@ -1,4 +1,9 @@
 import { resolveHighlightRects } from "../../app/pdf/get-selected-word";
+import {
+  isPinKind,
+  pinKindLabelOrFallback,
+  type PinKind,
+} from "../pdf/note";
 import { buildPdfHref } from "../pdf/jump-search";
 
 export type RecentEditKind = "note" | "mark" | "annotation";
@@ -16,15 +21,7 @@ export type RecentEditItem = {
   href: string;
 };
 
-export type RecentEditColor =
-  | "word"
-  | "question"
-  | "note"
-  | "bookmark"
-  | "todo"
-  | "review"
-  | "intensive"
-  | "annotation";
+export type RecentEditColor = "word" | PinKind | "annotation";
 
 export type WordMarkEditRow = {
   id: number;
@@ -80,20 +77,7 @@ export function wordMarkTypeLabel(type: string): string {
 }
 
 export function pinTypeLabel(type: string): string {
-  switch (type) {
-    case "question":
-      return "问题";
-    case "bookmark":
-      return "书签";
-    case "todo":
-      return "待办";
-    case "review":
-      return "复习";
-    case "intensive":
-      return "精读";
-    default:
-      return "笔记";
-  }
+  return pinKindLabelOrFallback(type);
 }
 
 export function annotationTypeLabel(type: string): string {
@@ -112,15 +96,7 @@ export function recentEditColor(
 ): RecentEditColor {
   if (item.kind === "note") return "word";
   if (item.kind === "annotation") return "annotation";
-  if (
-    item.type === "question" ||
-    item.type === "bookmark" ||
-    item.type === "todo" ||
-    item.type === "review" ||
-    item.type === "intensive"
-  ) {
-    return item.type;
-  }
+  if (isPinKind(item.type)) return item.type;
   return "note";
 }
 

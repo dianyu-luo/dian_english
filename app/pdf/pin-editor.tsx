@@ -10,113 +10,29 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { buildNoteHref } from "@/lib/note";
+import {
+  PIN_KINDS,
+  PINS_API,
+  TODO_KINDS,
+  isTodoKind,
+  pinEditorTheme,
+  pinKindLabel,
+  pinPlaceholder,
+  type PdfPin,
+  type PinKind,
+  type TodoKind,
+} from "@/lib/pdf/note";
 
-export type TodoKind = "review" | "todo" | "intensive";
-export type PinKind = "question" | "note" | "bookmark" | TodoKind;
-
-export const TODO_KINDS: readonly TodoKind[] = ["review", "todo", "intensive"];
-export const PIN_KINDS: readonly PinKind[] = [
-  "note",
-  "question",
-  "bookmark",
-  "review",
-  "todo",
-  "intensive",
-];
-
-export function isTodoKind(kind: string): kind is TodoKind {
-  return kind === "review" || kind === "todo" || kind === "intensive";
-}
-
-export const PINS_API = "/api/pdf/pins";
-
-export type PdfPin = {
-  id: number;
-  fileName: string;
-  type: PinKind;
-  pageNumber: number;
-  rectLeft: number;
-  rectTop: number;
-  rectWidth: number;
-  rectHeight: number;
-  content: string;
+export {
+  PIN_KINDS,
+  PINS_API,
+  TODO_KINDS,
+  isTodoKind,
+  pinKindLabel,
+  type PdfPin,
+  type PinKind,
+  type TodoKind,
 };
-
-export function pinKindLabel(kind: PinKind): string {
-  switch (kind) {
-    case "question":
-      return "问题";
-    case "note":
-      return "笔记";
-    case "bookmark":
-      return "书签";
-    case "todo":
-      return "待办";
-    case "review":
-      return "复习";
-    case "intensive":
-      return "精读";
-  }
-}
-
-function pinEditorTheme(kind: PinKind) {
-  switch (kind) {
-    case "question":
-      return {
-        bar: "bg-[#d97706]",
-        badge: "bg-[#fffbeb] text-[#b45309] ring-1 ring-inset ring-[#fcd34d]/80",
-        icon: "text-[#d97706]",
-        focus:
-          "focus:border-[#d97706]/70 focus:ring-2 focus:ring-[#d97706]/15",
-        save: "bg-[#b45309] hover:bg-[#92400e]",
-      };
-    case "note":
-      return {
-        bar: "bg-[#64748b]",
-        badge: "bg-[#f1f5f9] text-[#475569] ring-1 ring-inset ring-[#cbd5e1]/90",
-        icon: "text-[#64748b]",
-        focus:
-          "focus:border-[#64748b]/70 focus:ring-2 focus:ring-[#64748b]/15",
-        save: "bg-[#475569] hover:bg-[#334155]",
-      };
-    case "bookmark":
-      return {
-        bar: "bg-[#ea580c]",
-        badge: "bg-[#fff7ed] text-[#c2410c] ring-1 ring-inset ring-[#fdba74]/80",
-        icon: "text-[#ea580c]",
-        focus:
-          "focus:border-[#ea580c]/70 focus:ring-2 focus:ring-[#ea580c]/15",
-        save: "bg-[#c2410c] hover:bg-[#9a3412]",
-      };
-    case "todo":
-      return {
-        bar: "bg-[#0f766e]",
-        badge: "bg-[#f0fdfa] text-[#0f766e] ring-1 ring-inset ring-[#5eead4]/80",
-        icon: "text-[#0f766e]",
-        focus:
-          "focus:border-[#0f766e]/70 focus:ring-2 focus:ring-[#0f766e]/15",
-        save: "bg-[#0f766e] hover:bg-[#115e59]",
-      };
-    case "review":
-      return {
-        bar: "bg-[#7c3aed]",
-        badge: "bg-[#f5f3ff] text-[#6d28d9] ring-1 ring-inset ring-[#c4b5fd]/80",
-        icon: "text-[#7c3aed]",
-        focus:
-          "focus:border-[#7c3aed]/70 focus:ring-2 focus:ring-[#7c3aed]/15",
-        save: "bg-[#6d28d9] hover:bg-[#5b21b6]",
-      };
-    case "intensive":
-      return {
-        bar: "bg-[#2563eb]",
-        badge: "bg-[#eff6ff] text-[#1d4ed8] ring-1 ring-inset ring-[#93c5fd]/80",
-        icon: "text-[#2563eb]",
-        focus:
-          "focus:border-[#2563eb]/70 focus:ring-2 focus:ring-[#2563eb]/15",
-        save: "bg-[#1d4ed8] hover:bg-[#1e40af]",
-      };
-  }
-}
 
 function PinKindIcon({ kind }: { kind: PinKind }) {
   const common = { width: 13, height: 13, viewBox: "0 0 16 16", fill: "none", "aria-hidden": true as const };
@@ -212,23 +128,6 @@ function PinKindIcon({ kind }: { kind: PinKind }) {
           <path d="M8 4.7v8.4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
         </svg>
       );
-  }
-}
-
-function pinPlaceholder(kind: PinKind) {
-  switch (kind) {
-    case "question":
-      return "写下你的问题…";
-    case "todo":
-      return "记下待办事项…";
-    case "review":
-      return "记下要复习的要点…";
-    case "intensive":
-      return "记下精读笔记…";
-    case "bookmark":
-      return "给书签加一句备注…";
-    case "note":
-      return "随手记一点想法…";
   }
 }
 

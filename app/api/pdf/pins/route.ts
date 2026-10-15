@@ -2,15 +2,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pdfPins } from "@/lib/db/schema";
-
-const PIN_TYPES = new Set([
-  "question",
-  "note",
-  "bookmark",
-  "todo",
-  "review",
-  "intensive",
-]);
+import { isPinKind, type PinKind } from "@/lib/pdf/note";
 
 type Rect = {
   left?: number;
@@ -39,10 +31,8 @@ function isValidRect(rect: Rect | undefined): rect is Required<Rect> {
   );
 }
 
-function isPinType(
-  type: unknown,
-): type is "question" | "note" | "bookmark" | "todo" | "review" | "intensive" {
-  return typeof type === "string" && PIN_TYPES.has(type);
+function isPinType(type: unknown): type is PinKind {
+  return typeof type === "string" && isPinKind(type);
 }
 
 export async function GET(request: Request) {

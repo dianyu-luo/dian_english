@@ -18,16 +18,21 @@ import { findWordAtPagePoint } from "@/lib/pdf/text-hit-test";
 import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "@/components/markdown";
 import { buildNoteHref } from "@/lib/note";
+import {
+  PIN_KIND_META,
+  isPinKind,
+  isTodoKind,
+  pinKindLabel,
+  pinMarkerClass,
+  type PinKind,
+  type TodoKind,
+} from "@/lib/pdf/note";
 import { PdfOutlinePanel } from "./pdf-outline-panel";
 import {
   PINS_API,
   PinEditorPanel,
-  isTodoKind,
-  pinKindLabel,
   usePinEditor,
   type PdfPin,
-  type PinKind,
-  type TodoKind,
 } from "./pin-editor";
 import {
   PdfMarkerMenu,
@@ -243,23 +248,19 @@ function BookmarkMarkerIcon() {
   );
 }
 
-function todoMarkerClass(kind: TodoKind, state: "hot" | "filled" | "empty") {
-  if (state === "empty") {
-    return "border-[#a8a29e] bg-white text-[#57534e]";
+function PinMarkerContent({ kind }: { kind: PinKind }) {
+  const content = PIN_KIND_META[kind].marker.content;
+  if (content.type === "text") {
+    return (
+      <span className="text-sm font-semibold leading-none">{content.text}</span>
+    );
   }
-  if (kind === "review") {
-    return state === "hot"
-      ? "border-[#6d28d9] bg-[#ede9fe] text-[#5b21b6]"
-      : "border-[#8b5cf6] bg-[#f5f3ff] text-[#6d28d9]";
+  if (content.name === "note") return <NoteMarkerIcon />;
+  if (content.name === "bookmark") return <BookmarkMarkerIcon />;
+  if (content.name === "todo" && isTodoKind(kind)) {
+    return <TodoKindIcon kind={kind} />;
   }
-  if (kind === "intensive") {
-    return state === "hot"
-      ? "border-[#1d4ed8] bg-[#dbeafe] text-[#1e40af]"
-      : "border-[#3b82f6] bg-[#eff6ff] text-[#1d4ed8]";
-  }
-  return state === "hot"
-    ? "border-[#0f766e] bg-[#ccfbf1] text-[#115e59]"
-    : "border-[#14b8a6] bg-[#f0fdfa] text-[#0f766e]";
+  return null;
 }
 
 function PinMarkdownPreview({
@@ -2490,18 +2491,7 @@ export default function PdfViewer({
                   (sheetPage >= continuousWindow.start && sheetPage <= continuousWindow.end);
                 const arrowHeadId = `pdf-arrow-head-${sheetPage}`;
                 const arrowHeadSelectedId = `pdf-arrow-head-selected-${sheetPage}`;
-                const pageQuestions = pins.filter(
-                  (q) => q.type === "question" && q.pageNumber === sheetPage,
-                );
-                const pageNotes = pins.filter(
-                  (n) => n.type === "note" && n.pageNumber === sheetPage,
-                );
-                const pageBookmarks = pins.filter(
-                  (b) => b.type === "bookmark" && b.pageNumber === sheetPage,
-                );
-                const pageTodos = pins.filter(
-                  (t) => isTodoKind(t.type) && t.pageNumber === sheetPage,
-                );
+                const pagePins = pins.filter((p) => p.pageNumber === sheetPage);
                 const pageArrows = annotations.filter(
                   (a) => a.pageNumber === sheetPage && a.type === "arrow",
                 );
@@ -2667,158 +2657,64 @@ export default function PdfViewer({
                     />
                   ));
                 })}
-                {pageQuestions.map((q) => {
-                  const isDragging =
-                    draggingPin?.kind === "question" && draggingPin.id === q.id;
-                  const isActive =
-                    activePin?.kind === "question" && activePin.id === q.id;
-                  const isHovered =
-                    hoveredPin?.kind === "question" && hoveredPin.id === q.id;
-                  return (
-                    <button
-                      key={`q-${q.id}`}
-                      type="button"
-                      data-pin-marker
-                      data-question-marker
-                      data-pin-id={q.id}
-                      aria-label={q.content ? `问题：${q.content}` : "问题标记"}
-                      title={q.content.trim() ? undefined : "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
-                      className={`absolute z-30 flex touch-none items-center justify-center rounded-full border text-sm font-semibold leading-none shadow-sm select-none ${
-                        isDragging
-                          ? "cursor-grabbing border-[#b45309] bg-[#fef3c7] text-[#92400e]"
-                          : isActive
-                            ? "cursor-grab border-[#b45309] bg-[#fef3c7] text-[#92400e]"
-                            : q.content
-                              ? "cursor-grab border-[#d97706] bg-[#fffbeb] text-[#b45309]"
-                              : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
-                      } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
-                      style={pinMarkerStyle(q)}
-                      onPointerDown={(e) => onPinPointerDown(e, "question", q)}
-                      onPointerMove={(e) => onPinPointerMove(e, "question")}
-                      onPointerUp={(e) => onPinPointerUp(e, "question", q)}
-                      onPointerCancel={(e) => onPinPointerUp(e, "question", q, false)}
-                      onPointerEnter={() => onPinHoverStart("question", q)}
-                      onPointerLeave={onPinHoverEnd}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onContextMenu={(e) => openMarkerMenu(e, { kind: "question", pin: q })}
-                    >
-                      ?
-                    </button>
-                  );
-                })}
-                {pageNotes.map((n) => {
-                  const isDragging = draggingPin?.kind === "note" && draggingPin.id === n.id;
-                  const isActive = activePin?.kind === "note" && activePin.id === n.id;
-                  const isHovered = hoveredPin?.kind === "note" && hoveredPin.id === n.id;
-                  return (
-                    <button
-                      key={`n-${n.id}`}
-                      type="button"
-                      data-pin-marker
-                      data-note-marker
-                      data-pin-id={n.id}
-                      aria-label={n.content ? `笔记：${n.content}` : "笔记标记"}
-                      title={n.content.trim() ? undefined : "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
-                      className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
-                        isDragging
-                          ? "cursor-grabbing border-[#475569] bg-[#e2e8f0] text-[#334155]"
-                          : isActive
-                            ? "cursor-grab border-[#475569] bg-[#e2e8f0] text-[#334155]"
-                            : n.content
-                              ? "cursor-grab border-[#64748b] bg-[#f1f5f9] text-[#475569]"
-                              : "cursor-grab border-[#a8a29e] bg-white text-[#57534e]"
-                      } ${isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
-                      style={pinMarkerStyle(n)}
-                      onPointerDown={(e) => onPinPointerDown(e, "note", n)}
-                      onPointerMove={(e) => onPinPointerMove(e, "note")}
-                      onPointerUp={(e) => onPinPointerUp(e, "note", n)}
-                      onPointerCancel={(e) => onPinPointerUp(e, "note", n, false)}
-                      onPointerEnter={() => onPinHoverStart("note", n)}
-                      onPointerLeave={onPinHoverEnd}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onContextMenu={(e) => openMarkerMenu(e, { kind: "note", pin: n })}
-                    >
-                      <NoteMarkerIcon />
-                    </button>
-                  );
-                })}
-                {pageBookmarks.map((b) => {
-                  const isDragging =
-                    draggingPin?.kind === "bookmark" && draggingPin.id === b.id;
-                  const isHovered =
-                    hoveredPin?.kind === "bookmark" && hoveredPin.id === b.id;
-                  return (
-                    <button
-                      key={`b-${b.id}`}
-                      type="button"
-                      data-pin-marker
-                      data-bookmark-marker
-                      data-pin-id={b.id}
-                      aria-label={b.content ? `书签：${b.content}` : "书签"}
-                      title={b.content.trim() ? undefined : "拖动移动 · 双击进入编辑界面 · 右键删除"}
-                      className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
-                        isDragging
-                          ? "cursor-grabbing border-[#9a3412] bg-[#ffedd5] text-[#9a3412]"
-                          : "cursor-grab border-[#ea580c] bg-[#fff7ed] text-[#c2410c]"
-                      } ${isDragging || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
-                      style={pinMarkerStyle(b)}
-                      onPointerDown={(e) => onPinPointerDown(e, "bookmark", b)}
-                      onPointerMove={(e) => onPinPointerMove(e, "bookmark")}
-                      onPointerUp={(e) => onPinPointerUp(e, "bookmark", b, false)}
-                      onPointerCancel={(e) => onPinPointerUp(e, "bookmark", b, false)}
-                      onPointerEnter={() => onPinHoverStart("bookmark", b)}
-                      onPointerLeave={onPinHoverEnd}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onContextMenu={(e) => openMarkerMenu(e, { kind: "bookmark", pin: b })}
-                    >
-                      <BookmarkMarkerIcon />
-                    </button>
-                  );
-                })}
-                {pageTodos.map((t) => {
-                  const kind = t.type as TodoKind;
+                {pagePins.map((pin) => {
+                  if (!isPinKind(pin.type)) return null;
+                  const kind = pin.type;
+                  const meta = PIN_KIND_META[kind];
                   const label = pinKindLabel(kind);
-                  const isDragging = draggingPin?.kind === kind && draggingPin.id === t.id;
-                  const isActive = activePin?.kind === kind && activePin.id === t.id;
-                  const isHovered = hoveredPin?.kind === kind && hoveredPin.id === t.id;
-                  const visual = isDragging || isActive ? "hot" : t.content ? "filled" : "empty";
+                  const isDragging =
+                    draggingPin?.kind === kind && draggingPin.id === pin.id;
+                  const isActive =
+                    activePin?.kind === kind && activePin.id === pin.id;
+                  const isHovered =
+                    hoveredPin?.kind === kind && hoveredPin.id === pin.id;
+                  const visual =
+                    isDragging || isActive
+                      ? "hot"
+                      : pin.content || !meta.clickOpensEditor
+                        ? "filled"
+                        : "empty";
+                  const emptyTitle = meta.clickOpensEditor
+                    ? "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"
+                    : "拖动移动 · 双击进入编辑界面 · 右键删除";
                   return (
                     <button
-                      key={`t-${t.id}`}
+                      key={`pin-${kind}-${pin.id}`}
                       type="button"
                       data-pin-marker
-                      data-todo-marker
-                      data-pin-id={t.id}
-                      aria-label={t.content ? `${label}：${t.content}` : `${label}标记`}
-                      title={t.content.trim() ? undefined : "拖动移动 · 点击编辑 · 双击进入编辑界面 · 右键菜单"}
+                      data-pin-kind={kind}
+                      data-pin-id={pin.id}
+                      aria-label={
+                        pin.content ? `${label}：${pin.content}` : `${label}标记`
+                      }
+                      title={pin.content.trim() ? undefined : emptyTitle}
                       className={`absolute z-30 flex touch-none items-center justify-center rounded-full border shadow-sm select-none ${
                         isDragging ? "cursor-grabbing" : "cursor-grab"
-                      } ${todoMarkerClass(kind, visual)} ${
-                        isDragging || isActive || isHovered ? "opacity-100" : "opacity-40 hover:opacity-100"
+                      } ${pinMarkerClass(kind, visual)} ${
+                        isDragging || isActive || isHovered
+                          ? "opacity-100"
+                          : "opacity-40 hover:opacity-100"
                       }`}
-                      style={pinMarkerStyle(t)}
-                      onPointerDown={(e) => onPinPointerDown(e, kind, t)}
+                      style={pinMarkerStyle(pin)}
+                      onPointerDown={(e) => onPinPointerDown(e, kind, pin)}
                       onPointerMove={(e) => onPinPointerMove(e, kind)}
-                      onPointerUp={(e) => onPinPointerUp(e, kind, t)}
-                      onPointerCancel={(e) => onPinPointerUp(e, kind, t, false)}
-                      onPointerEnter={() => onPinHoverStart(kind, t)}
+                      onPointerUp={(e) =>
+                        onPinPointerUp(e, kind, pin, meta.clickOpensEditor)
+                      }
+                      onPointerCancel={(e) =>
+                        onPinPointerUp(e, kind, pin, false)
+                      }
+                      onPointerEnter={() => onPinHoverStart(kind, pin)}
                       onPointerLeave={onPinHoverEnd}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                       }}
-                      onContextMenu={(e) => openMarkerMenu(e, { kind, pin: t })}
+                      onContextMenu={(e) =>
+                        openMarkerMenu(e, { kind, pin })
+                      }
                     >
-                      <TodoKindIcon kind={kind} />
+                      <PinMarkerContent kind={kind} />
                     </button>
                   );
                 })}

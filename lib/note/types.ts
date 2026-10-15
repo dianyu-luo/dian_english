@@ -1,21 +1,8 @@
-export type NoteSaveKind =
-  | "word"
-  | "question"
-  | "note"
-  | "bookmark"
-  | "todo"
-  | "review"
-  | "intensive";
+import { PIN_KINDS, type PinKind } from "@/lib/pdf/note";
 
-export const NOTE_SAVE_KINDS: readonly NoteSaveKind[] = [
-  "word",
-  "question",
-  "note",
-  "bookmark",
-  "todo",
-  "review",
-  "intensive",
-] as const;
+export type NoteSaveKind = "word" | PinKind;
+
+export const NOTE_SAVE_KINDS: readonly NoteSaveKind[] = ["word", ...PIN_KINDS];
 
 const SAVE_KIND_SET = new Set<string>(NOTE_SAVE_KINDS);
 

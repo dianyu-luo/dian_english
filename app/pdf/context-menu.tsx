@@ -10,12 +10,16 @@ import {
   type RefObject,
 } from "react";
 import {
+  CONTEXT_MENU_PIN_KINDS,
   PIN_KINDS,
+  TODO_KINDS,
+  isPinKind,
+  isTodoKind,
   pinKindLabel,
   type PdfPin,
   type PinKind,
   type TodoKind,
-} from "./pin-editor";
+} from "@/lib/pdf/note";
 
 export type AnnotateToolId = "arrow" | "circle" | "rect";
 
@@ -75,7 +79,7 @@ function writeLastAnnotateTool(tool: AnnotateToolId) {
 function readLastTodoKind(): TodoKind | null {
   try {
     const value = localStorage.getItem(LAST_TODO_KIND_KEY);
-    if (value === "review" || value === "todo" || value === "intensive") return value;
+    if (value && isTodoKind(value)) return value;
   } catch {
     // ignore
   }
@@ -213,13 +217,11 @@ export function TodoKindIcon({ kind }: { kind: TodoKind }) {
 }
 
 const CONTEXT_MENU_ITEMS = [
-  { id: "note", label: "笔记" },
-  { id: "question", label: "问题" },
-  { id: "bookmark", label: "书签" },
-  { id: "todo", label: "待办" },
-  { id: "annotate", label: "标注" },
-  { id: "help", label: "帮助" },
-] as const;
+  ...CONTEXT_MENU_PIN_KINDS.map((id) => ({ id, label: pinKindLabel(id) })),
+  { id: "todo" as const, label: "待办" },
+  { id: "annotate" as const, label: "标注" },
+  { id: "help" as const, label: "帮助" },
+];
 
 const ANNOTATE_SUBMENU_ITEMS = [
   { id: "arrow", label: "箭头", Icon: AnnotateArrowIcon },
@@ -227,11 +229,16 @@ const ANNOTATE_SUBMENU_ITEMS = [
   { id: "rect", label: "矩形", Icon: AnnotateRectIcon },
 ] as const;
 
-const TODO_SUBMENU_ITEMS = [
-  { id: "review", label: "复习", Icon: ReviewMarkerIcon },
-  { id: "todo", label: "待办", Icon: TodoMarkerIcon },
-  { id: "intensive", label: "精读", Icon: IntensiveMarkerIcon },
-] as const;
+const TODO_SUBMENU_ITEMS = TODO_KINDS.map((id) => ({
+  id,
+  label: pinKindLabel(id),
+  Icon:
+    id === "review"
+      ? ReviewMarkerIcon
+      : id === "intensive"
+        ? IntensiveMarkerIcon
+        : TodoMarkerIcon,
+}));
 
 function useDismissFloating(
   open: boolean,
@@ -579,7 +586,7 @@ export function PdfPageContextMenu({
             className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
             onMouseEnter={dismissSubmenus}
             onClick={() => {
-              if (item.id === "question" || item.id === "note" || item.id === "bookmark") {
+              if (isPinKind(item.id)) {
                 onAddPin(item.id);
                 return;
               }

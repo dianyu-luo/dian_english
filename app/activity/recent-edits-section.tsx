@@ -8,6 +8,11 @@ import {
   type RecentEditColor,
   type RecentEditKind,
 } from "@/lib/activity/recent-edit";
+import {
+  PIN_KINDS,
+  pinKindLabel,
+  pinRecentBadge,
+} from "@/lib/pdf/note";
 
 /** 可序列化传入客户端的最近编辑项 */
 export type RecentEditListItem = {
@@ -25,26 +30,16 @@ export type RecentEditListItem = {
 
 const RECENT_EDIT_BADGE: Record<RecentEditColor, string> = {
   word: "border-[#facc15] bg-[#fef9c3] text-[#854d0e]",
-  question: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]",
-  note: "border-[#cbd5e1] bg-[#f1f5f9] text-[#475569]",
-  bookmark: "border-[#fdba74] bg-[#fff7ed] text-[#c2410c]",
-  todo: "border-[#5eead4] bg-[#f0fdfa] text-[#0f766e]",
-  review: "border-[#c4b5fd] bg-[#f5f3ff] text-[#6d28d9]",
-  intensive: "border-[#93c5fd] bg-[#eff6ff] text-[#1d4ed8]",
   annotation: "border-[#fca5a5] bg-[#fef2f2] text-[#b91c1c]",
-};
+  ...Object.fromEntries(PIN_KINDS.map((k) => [k, pinRecentBadge(k)])),
+} as Record<RecentEditColor, string>;
 
 type EditFilter = "all" | RecentEditColor;
 
 const FILTERS: { id: EditFilter; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "word", label: "划词" },
-  { id: "question", label: "问题" },
-  { id: "note", label: "笔记" },
-  { id: "bookmark", label: "书签" },
-  { id: "review", label: "复习" },
-  { id: "todo", label: "待办" },
-  { id: "intensive", label: "精读" },
+  ...PIN_KINDS.map((k) => ({ id: k as EditFilter, label: pinKindLabel(k) })),
   { id: "annotation", label: "批注" },
 ];
 
@@ -77,16 +72,11 @@ export function RecentEditsSection({
   }, [items, selectedPage]);
 
   const counts = useMemo(() => {
-    const map: Record<RecentEditColor, number> = {
+    const map = {
       word: 0,
-      question: 0,
-      note: 0,
-      bookmark: 0,
-      review: 0,
-      todo: 0,
-      intensive: 0,
       annotation: 0,
-    };
+      ...Object.fromEntries(PIN_KINDS.map((k) => [k, 0])),
+    } as Record<RecentEditColor, number>;
     for (const item of pageItems) {
       map[recentEditColor(item)] += 1;
     }
