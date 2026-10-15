@@ -4,48 +4,39 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import PdfPageClient from "@/app/pdf/pdf-page-client";
 
-function isPdfPath(pathname: string) {
-  return pathname === "/pdf" || pathname.startsWith("/pdf/");
-}
-
-function isNotePath(pathname: string) {
-  return pathname === "/note" || pathname.startsWith("/note/");
-}
-
 /**
- * 首次进入 /pdf 或 /note 后保持阅读器挂载。
+ * 首次进入 /pdf 后保持阅读器挂载。
  * 切到活动/设置等页面时只隐藏，避免 PDF 整页卸载再解析。
- * /note 时 paused + noteSlot。
+ * /pdf/note 时 paused + noteSlot。
  */
 export function PersistentPdfShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "/";
-  const isPdfRoute = isPdfPath(pathname);
-  const isNote = isNotePath(pathname);
-  const showShell = isPdfRoute || isNote;
-  const [keepPdf, setKeepPdf] = useState(showShell);
+  const isPdfRoute = pathname === "/pdf" || pathname.startsWith("/pdf/");
+  const isNote = pathname.startsWith("/pdf/note");
+  const [keepPdf, setKeepPdf] = useState(isPdfRoute);
 
   useEffect(() => {
-    if (showShell) setKeepPdf(true);
-  }, [showShell]);
+    if (isPdfRoute) setKeepPdf(true);
+  }, [isPdfRoute]);
 
   useEffect(() => {
-    if (!showShell || !keepPdf) return;
+    if (!isPdfRoute || !keepPdf) return;
     const id = window.requestAnimationFrame(() => {
       window.dispatchEvent(new Event("resize"));
     });
     return () => window.cancelAnimationFrame(id);
-  }, [showShell, keepPdf]);
+  }, [isPdfRoute, keepPdf]);
 
   return (
     <>
       {keepPdf ? (
         <div
           className={
-            showShell
+            isPdfRoute
               ? "h-dvh overflow-hidden"
               : "pointer-events-none invisible fixed inset-0 z-[-1] h-dvh overflow-hidden"
           }
-          aria-hidden={!showShell}
+          aria-hidden={!isPdfRoute}
         >
           <PdfPageClient
             paused={isNote || !isPdfRoute}
@@ -53,7 +44,7 @@ export function PersistentPdfShell({ children }: { children: ReactNode }) {
           />
         </div>
       ) : null}
-      {showShell ? null : children}
+      {isPdfRoute ? null : children}
     </>
   );
 }

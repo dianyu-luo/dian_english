@@ -7,7 +7,7 @@ export type BuildNoteHrefOptions = {
   body?: string;
 };
 
-/** 统一笔记页入口：/note?... */
+/** 统一笔记页入口：/pdf/note?... */
 export function buildNoteHref(opts: BuildNoteHrefOptions = {}): string {
   const params = new URLSearchParams();
   if (opts.kind) params.set("kind", opts.kind);
@@ -16,5 +16,5 @@ export function buildNoteHref(opts: BuildNoteHrefOptions = {}): string {
   if (title) params.set("word", title);
   if (opts.body) params.set("body", opts.body);
   const qs = params.toString();
-  return qs ? `/note?${qs}` : "/note";
+  return qs ? `/pdf/note?${qs}` : "/pdf/note";
 }
