@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepareMarkdown } from "./markdown-prepare";
+import { prepareMarkdown } from "./prepare";
 
 describe("prepareMarkdown", () => {
   it("把多行 $$ 公式改成开闭定界符单独成行", () => {

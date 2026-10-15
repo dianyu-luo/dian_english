@@ -1,6 +1,6 @@
 "use client";
 
-import { Markdown } from "./markdown";
+import { Markdown } from "@/components/markdown";
 
 type ChatContentProps = {
   content: string;

@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { Components } from "react-markdown";
-import { prepareMarkdown } from "./markdown-prepare";
+import { prepareMarkdown } from "@/lib/markdown/prepare";
 // KaTeX CSS 在 globals.css 中统一引入
 
 function MathFormula({ tex, displayMode }: { tex: string; displayMode: boolean }) {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Markdown } from "../markdown";
+import { Markdown } from "@/components/markdown";
 
 export type NoteSaveKind =
   | "word"

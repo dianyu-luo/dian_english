@@ -16,7 +16,7 @@ import {
 } from "./get-selected-word";
 import { findWordAtPagePoint } from "@/lib/pdf/text-hit-test";
 import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
-import { Markdown } from "./markdown";
+import { Markdown } from "@/components/markdown";
 import { PdfOutlinePanel } from "./pdf-outline-panel";
 import {
   PINS_API,
