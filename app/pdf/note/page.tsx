@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { NoteEditor } from "@/components/note";
-import { parseNoteSaveTarget, persistNoteMarkdown } from "@/lib/note";
+import { parseNoteSaveTarget, persistNoteMarkdown } from "@/lib/pdf/note";
 
 function NoteContent() {
   const searchParams = useSearchParams();

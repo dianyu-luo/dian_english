@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { buildNoteHref } from "@/lib/note";
+import { buildNoteHref } from "@/lib/pdf/note";
 import { blobToChatImage, type ChatImage } from "./chat-image";
 import { ChatContent } from "./chat-content";
 import type { PdfWordSelectInfo } from "./get-selected-word";

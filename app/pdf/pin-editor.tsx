@@ -9,11 +9,11 @@ import {
   type RefObject,
 } from "react";
 import { useRouter } from "next/navigation";
-import { buildNoteHref } from "@/lib/note";
 import {
   PIN_KINDS,
   PINS_API,
   TODO_KINDS,
+  buildNoteHref,
   isTodoKind,
   pinEditorTheme,
   pinKindLabel,

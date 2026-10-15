@@ -20,3 +20,12 @@ export {
   type TodoKind,
 } from "./kinds";
 export { PINS_API, type PdfPin } from "./types";
+export {
+  NOTE_SAVE_KINDS,
+  isNoteSaveKind,
+  parseNoteSaveTarget,
+  type NoteSaveKind,
+  type NoteSaveTarget,
+} from "./save";
+export { buildNoteHref, type BuildNoteHrefOptions } from "./href";
+export { persistNoteMarkdown } from "./persist";

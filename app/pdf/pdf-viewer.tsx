@@ -17,9 +17,9 @@ import {
 import { findWordAtPagePoint } from "@/lib/pdf/text-hit-test";
 import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "@/components/markdown";
-import { buildNoteHref } from "@/lib/note";
 import {
   PIN_KIND_META,
+  buildNoteHref,
   isPinKind,
   isTodoKind,
   pinKindLabel,

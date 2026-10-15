@@ -1,5 +1,6 @@
-import { PIN_KINDS, type PinKind } from "@/lib/pdf/note";
+import { PIN_KINDS, type PinKind } from "./kinds";
 
+/** 笔记页可回写的目标：划词笔记或页内标记 */
 export type NoteSaveKind = "word" | PinKind;
 
 export const NOTE_SAVE_KINDS: readonly NoteSaveKind[] = ["word", ...PIN_KINDS];

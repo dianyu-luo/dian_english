@@ -1,4 +1,4 @@
-import type { NoteSaveKind } from "./types";
+import type { NoteSaveKind } from "./save";
 
 /** 将 Markdown 写回划词笔记或页内标记 */
 export async function persistNoteMarkdown(

@@ -1,4 +1,4 @@
-import type { NoteSaveKind } from "./types";
+import type { NoteSaveKind } from "./save";
 
 export type BuildNoteHrefOptions = {
   kind?: NoteSaveKind;
