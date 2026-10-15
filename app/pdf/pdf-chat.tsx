@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
+import { buildNoteHref } from "@/lib/note";
 import { blobToChatImage, type ChatImage } from "./chat-image";
 import { ChatContent } from "./chat-content";
 import type { PdfWordSelectInfo } from "./get-selected-word";
@@ -390,7 +391,7 @@ export default function PdfChat({ selected, fileName, pageNumber }: PdfChatProps
               type="button"
               onClick={() => {
                 if (!selected) return;
-                router.push(`/pdf/note?word=${encodeURIComponent(selected.word)}`);
+                router.push(buildNoteHref({ word: selected.word }));
               }}
               className="border border-[#d6d3d1] bg-white px-2 py-0.5 text-xs text-[#57534e] hover:bg-[#f0ebe3]"
             >

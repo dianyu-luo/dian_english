@@ -17,6 +17,7 @@ import {
 import { findWordAtPagePoint } from "@/lib/pdf/text-hit-test";
 import { buildPdfHref, parsePdfJumpSearch } from "@/lib/pdf/jump-search";
 import { Markdown } from "@/components/markdown";
+import { buildNoteHref } from "@/lib/note";
 import { PdfOutlinePanel } from "./pdf-outline-panel";
 import {
   PINS_API,
@@ -446,21 +447,6 @@ function formatRecentTime(value: string | number | Date | undefined): string {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
   if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
   return d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-}
-
-function noteEditorHref(opts: {
-  kind: "word" | PinKind;
-  id: number;
-  word?: string;
-  body?: string;
-}) {
-  const params = new URLSearchParams();
-  params.set("kind", opts.kind);
-  params.set("id", String(opts.id));
-  const title = opts.word?.trim();
-  if (title) params.set("word", title);
-  if (opts.body) params.set("body", opts.body);
-  return `/pdf/note?${params}`;
 }
 
 export default function PdfViewer({
@@ -2950,7 +2936,7 @@ export default function PdfViewer({
                         <button
                           type="button"
                           onClick={() => {
-                            const href = noteEditorHref({
+                            const href = buildNoteHref({
                               kind: "word",
                               id: activeWordMarkItem.id,
                               word: activeWordMarkItem.word,

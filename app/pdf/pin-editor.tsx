@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from "react";
 import { useRouter } from "next/navigation";
+import { buildNoteHref } from "@/lib/note";
 
 export type TodoKind = "review" | "todo" | "intensive";
 export type PinKind = "question" | "note" | "bookmark" | TodoKind;
@@ -231,21 +232,6 @@ function pinPlaceholder(kind: PinKind) {
   }
 }
 
-function pinNoteEditorHref(opts: {
-  kind: PinKind;
-  id: number;
-  word?: string;
-  body?: string;
-}) {
-  const params = new URLSearchParams();
-  params.set("kind", opts.kind);
-  params.set("id", String(opts.id));
-  const title = opts.word?.trim();
-  if (title) params.set("word", title);
-  if (opts.body) params.set("body", opts.body);
-  return `/pdf/note?${params}`;
-}
-
 export type UsePinEditorOptions = {
   pins: PdfPin[];
   updatePins: (updater: (prev: PdfPin[]) => PdfPin[]) => void;
@@ -306,7 +292,7 @@ export function usePinEditor({
 
   const openPinMarkdownEditor = useCallback(
     (kind: PinKind, pin: PdfPin, body?: string) => {
-      const href = pinNoteEditorHref({
+      const href = buildNoteHref({
         kind,
         id: pin.id,
         word: pinKindLabel(kind),
