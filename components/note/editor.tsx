@@ -4,15 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/markdown";
-import {
-  persistNoteMarkdown,
-  type NoteSaveKind,
-} from "@/lib/note";
 
-type NoteEditorProps = {
+export type NoteEditorProps = {
   initialValue?: string;
-  saveKind?: NoteSaveKind;
-  saveId?: number;
+  /** 传入则防抖自动保存；不传则只编辑 */
+  onSave?: (markdown: string) => Promise<void>;
+  /** 关闭按钮与 Esc */
+  closeHref?: string;
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -21,7 +19,7 @@ const FONT_MIN = 12;
 const FONT_MAX = 48;
 const FONT_STEP = 2;
 const FONT_DEFAULT = 14;
-const FONT_STORAGE_KEY = "pdf-note-font-size";
+const FONT_STORAGE_KEY = "note-font-size";
 const LINE_HEIGHT = 1.65;
 const EDITOR_PAD_X = 20;
 const EDITOR_PAD_TOP = 12;
@@ -62,7 +60,11 @@ function scrollPreviewToNewContent(container: HTMLElement, prev: string, next: s
   container.scrollTop = Math.max(0, y - container.clientHeight / 2);
 }
 
-export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorProps) {
+export function NoteEditor({
+  initialValue = "",
+  onSave,
+  closeHref = "/",
+}: NoteEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState(initialValue);
   const [status, setStatus] = useState<SaveStatus>("idle");
@@ -70,17 +72,15 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
   const preview = useDeferredValue(raw);
   const rawRef = useRef(raw);
   const lastSavedRef = useRef<string | null>(null);
-  const saveKindRef = useRef(saveKind);
-  const saveIdRef = useRef(saveId);
+  const onSaveRef = useRef(onSave);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const lastPreviewRef = useRef(preview);
   const skipPreviewFollowRef = useRef(true);
   rawRef.current = raw;
-  saveKindRef.current = saveKind;
-  saveIdRef.current = saveId;
+  onSaveRef.current = onSave;
 
-  const canSave = saveKind != null && saveId != null && saveId >= 1;
+  const canSave = onSave != null;
 
   useEffect(() => {
     try {
@@ -102,7 +102,9 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
   };
 
   useEffect(() => {
-    if (!canSave || saveKind == null || saveId == null) return;
+    if (!canSave) return;
+    const save = onSaveRef.current;
+    if (!save) return;
 
     if (raw === lastSavedRef.current) {
       setStatus((s) => (s === "idle" ? s : "saved"));
@@ -111,7 +113,7 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
 
     setStatus("saving");
     const handle = window.setTimeout(() => {
-      void persistNoteMarkdown(saveKind, saveId, raw)
+      void save(raw)
         .then(() => {
           if (rawRef.current !== raw) return;
           lastSavedRef.current = raw;
@@ -124,16 +126,15 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
     }, 600);
 
     return () => window.clearTimeout(handle);
-  }, [canSave, raw, saveKind, saveId]);
+  }, [canSave, raw]);
 
   useEffect(() => {
     if (!canSave) return;
     return () => {
-      const kind = saveKindRef.current;
-      const id = saveIdRef.current;
+      const save = onSaveRef.current;
       const content = rawRef.current;
-      if (kind == null || id == null || content === lastSavedRef.current) return;
-      void persistNoteMarkdown(kind, id, content)
+      if (!save || content === lastSavedRef.current) return;
+      void save(content)
         .then(() => {
           lastSavedRef.current = content;
         })
@@ -147,11 +148,11 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
-      router.push("/pdf");
+      router.push(closeHref);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [router]);
+  }, [router, closeHref]);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -205,7 +206,7 @@ export function NoteEditor({ initialValue = "", saveKind, saveId }: NoteEditorPr
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col md:flex-row">
       <Link
-        href="/pdf"
+        href={closeHref}
         className="absolute top-2 right-2 z-10 px-2 py-1 text-xs text-[#78716c] hover:text-[#1c1917]"
       >
         关闭

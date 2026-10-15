@@ -2,8 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { parseNoteSaveTarget } from "@/lib/note";
 import { NoteEditor } from "@/components/note";
+import { parseNoteSaveTarget, persistNoteMarkdown } from "@/lib/note";
 
 function NoteContent() {
   const searchParams = useSearchParams();
@@ -18,8 +18,12 @@ function NoteContent() {
     <NoteEditor
       key={searchParams.toString()}
       initialValue={initialValue}
-      saveKind={target?.kind}
-      saveId={target?.id}
+      closeHref="/pdf"
+      onSave={
+        target
+          ? (markdown) => persistNoteMarkdown(target.kind, target.id, markdown)
+          : undefined
+      }
     />
   );
 }

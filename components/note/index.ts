@@ -1,1 +1,1 @@
-export { NoteEditor } from "./editor";
+export { NoteEditor, type NoteEditorProps } from "./editor";
