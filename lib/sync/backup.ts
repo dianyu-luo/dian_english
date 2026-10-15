@@ -3,9 +3,15 @@ import "server-only";
 import { createClient } from "@libsql/client";
 import { copyFile, rename, unlink, writeFile } from "fs/promises";
 import path from "path";
-import { buildManifest, hashFile, type SyncManifest } from "./manifest";
+import {
+  buildManifest,
+  hashFile,
+  writeManifest,
+  type SyncManifest,
+} from "./manifest";
 import {
   ensureSyncDir,
+  LOCAL_MANIFEST_PATH,
   LOCAL_SYNC_TMP_DIR,
   pathExists,
   type SyncPaths,
@@ -79,6 +85,7 @@ export async function uploadDbToOneDrive(): Promise<UploadResult> {
 
   await atomicMove(remoteDbTmp, paths.remoteDbPath);
   await atomicMove(remoteManifestTmp, paths.remoteManifestPath);
+  await writeManifest(LOCAL_MANIFEST_PATH, manifest);
   await unlink(snapshotPath).catch(() => {});
 
   return {

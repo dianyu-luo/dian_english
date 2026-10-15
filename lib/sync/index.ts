@@ -18,7 +18,10 @@ export {
   ensureSyncDir,
   LOCAL_DATA_DIR,
   LOCAL_DB_PATH,
+  LOCAL_MANIFEST_PATH,
   resolveOneDriveRoot,
+  resolveSyncPaths,
   SYNC_APP_FOLDER,
   type SyncPaths,
 } from "./paths";
+export { getSyncStatus, type SyncStatus } from "./status";

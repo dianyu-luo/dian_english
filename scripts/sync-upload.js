@@ -21,6 +21,11 @@ const path = require("path");
 
 const SYNC_APP_FOLDER = "dian_english";
 const LOCAL_DB_PATH = path.join(process.cwd(), "data", "app.db");
+const LOCAL_MANIFEST_PATH = path.join(
+  process.cwd(),
+  "data",
+  ".sync-manifest.json",
+);
 const LOCAL_SYNC_TMP_DIR = path.join(process.cwd(), "data", ".sync-tmp");
 
 async function exists(p) {
@@ -140,9 +145,15 @@ async function main() {
   );
   await atomicMove(remoteDbTmp, paths.remoteDbPath);
   await atomicMove(remoteManifestTmp, paths.remoteManifestPath);
+  await writeFile(
+    LOCAL_MANIFEST_PATH,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
   await unlink(snapshotPath).catch(() => {});
 
   console.log("uploaded:", paths.remoteDbPath);
+  console.log("localManifest:", LOCAL_MANIFEST_PATH);
   console.log("manifest:", JSON.stringify(manifest, null, 2));
 }
 

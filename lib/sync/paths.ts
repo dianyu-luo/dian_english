@@ -9,6 +9,8 @@ export const SYNC_APP_FOLDER = "dian_english";
 
 export const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 export const LOCAL_DB_PATH = path.join(LOCAL_DATA_DIR, "app.db");
+/** 上次成功上传的本地侧 manifest（与远端对比用） */
+export const LOCAL_MANIFEST_PATH = path.join(LOCAL_DATA_DIR, ".sync-manifest.json");
 export const LOCAL_SYNC_TMP_DIR = path.join(LOCAL_DATA_DIR, ".sync-tmp");
 
 async function exists(filePath: string): Promise<boolean> {
@@ -76,7 +78,10 @@ export type SyncPaths = {
  *
  * SYNC_DIR 若已设置，视为最终 syncDir（不再追加 db/dian_english）。
  */
-export async function ensureSyncDir(): Promise<SyncPaths> {
+/** 解析同步路径，不创建目录；找不到 OneDrive 时返回 error */
+export async function resolveSyncPaths(): Promise<
+  { ok: true; paths: SyncPaths } | { ok: false; error: string }
+> {
   const override = process.env.SYNC_DIR?.trim();
   let syncDir: string;
 
@@ -85,22 +90,36 @@ export async function ensureSyncDir(): Promise<SyncPaths> {
   } else {
     const oneDriveRoot = await resolveOneDriveRoot();
     if (!oneDriveRoot) {
-      throw new Error(
-        "未找到 OneDrive 目录。请安装/登录 OneDrive，或设置环境变量 SYNC_DIR 为同步目录。",
-      );
+      return {
+        ok: false,
+        error:
+          "未找到 OneDrive 目录。请安装/登录 OneDrive，或设置环境变量 SYNC_DIR 为同步目录。",
+      };
     }
     syncDir = path.join(oneDriveRoot, "db", SYNC_APP_FOLDER);
   }
 
-  await mkdir(syncDir, { recursive: true });
+  return {
+    ok: true,
+    paths: {
+      syncDir,
+      remoteDbPath: path.join(syncDir, "app.db"),
+      remoteManifestPath: path.join(syncDir, "manifest.json"),
+      localDbPath: LOCAL_DB_PATH,
+    },
+  };
+}
+
+export async function ensureSyncDir(): Promise<SyncPaths> {
+  const resolved = await resolveSyncPaths();
+  if (!resolved.ok) {
+    throw new Error(resolved.error);
+  }
+
+  await mkdir(resolved.paths.syncDir, { recursive: true });
   await mkdir(LOCAL_SYNC_TMP_DIR, { recursive: true });
 
-  return {
-    syncDir,
-    remoteDbPath: path.join(syncDir, "app.db"),
-    remoteManifestPath: path.join(syncDir, "manifest.json"),
-    localDbPath: LOCAL_DB_PATH,
-  };
+  return resolved.paths;
 }
 
 export async function pathExists(filePath: string): Promise<boolean> {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
+import { SyncSection } from "./sync-section";
 
 export const metadata = {
   title: "设置",
@@ -313,6 +314,8 @@ export default function SettingsPage() {
             </select>
           </SettingRow>
         </SettingSection>
+
+        <SyncSection />
 
         <SettingSection
           title="数据管理"
