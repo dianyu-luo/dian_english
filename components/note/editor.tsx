@@ -9,8 +9,6 @@ import {
   type NoteSaveKind,
 } from "@/lib/note";
 
-export type { NoteSaveKind };
-
 type NoteEditorProps = {
   initialValue?: string;
   saveKind?: NoteSaveKind;
