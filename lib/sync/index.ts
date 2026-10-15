@@ -6,6 +6,15 @@ export {
   type UploadResult,
 } from "./backup";
 export {
+  archiveCurrentRemote,
+  DEFAULT_HISTORY_KEEP,
+  historyDir,
+  historyKeepCount,
+  listHistory,
+  pruneHistory,
+  type HistoryEntry,
+} from "./history";
+export {
   buildManifest,
   compareManifests,
   hashFile,

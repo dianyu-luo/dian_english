@@ -26,6 +26,9 @@ type SyncStatus = {
   remoteManifest: SyncManifest | null;
   compare: ManifestCompare | null;
   localDirty: boolean;
+  historyCount: number;
+  historyKeep: number;
+  historyLatestId: string | null;
 };
 
 const fieldClass =
@@ -194,6 +197,22 @@ export function SyncSection() {
             {status?.remoteDbExists
               ? `${formatTime(remote?.exportedAt)} · ${formatBytes(remote?.byteSize)}`
               : "尚无"}
+          </p>
+        </SettingRow>
+        <SettingRow
+          label="历史版本"
+          hint={`history/ · 最多保留 ${status?.historyKeep ?? 10} 份（SYNC_HISTORY_KEEP）`}
+        >
+          <p className="text-sm text-[#57534e]">
+            {status
+              ? status.historyCount > 0
+                ? `${status.historyCount} 份${
+                    status.historyLatestId
+                      ? ` · 最近 ${status.historyLatestId}`
+                      : ""
+                  }`
+                : "尚无（下次上传会归档当前云端文件）"
+              : "—"}
           </p>
         </SettingRow>
         <SettingRow label="上传到 OneDrive" hint="VACUUM INTO 安全快照后覆盖云端">

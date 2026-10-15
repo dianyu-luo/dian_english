@@ -13,6 +13,7 @@ const {
   readdir,
   readFile,
   rename,
+  rm,
   unlink,
   writeFile,
 } = require("fs/promises");
@@ -116,6 +117,66 @@ async function atomicMove(tmpPath, destPath) {
   }
 }
 
+function stampFromIso(iso) {
+  const t = Date.parse(iso);
+  const d = Number.isFinite(t) ? new Date(t) : new Date();
+  return d
+    .toISOString()
+    .replace(/:/g, "-")
+    .replace(/\.\d{3}Z$/, (m) => `-${m.slice(1, 4)}Z`);
+}
+
+function historyKeepCount() {
+  const raw = process.env.SYNC_HISTORY_KEEP?.trim();
+  const n = raw ? Number(raw) : 10;
+  if (!Number.isFinite(n) || n < 1) return 10;
+  return Math.min(Math.floor(n), 100);
+}
+
+async function archiveCurrentRemote(paths) {
+  if (!(await exists(paths.remoteDbPath))) return null;
+  let existing = null;
+  if (await exists(paths.remoteManifestPath)) {
+    try {
+      existing = JSON.parse(await readFile(paths.remoteManifestPath, "utf8"));
+    } catch {
+      existing = null;
+    }
+  }
+  const stamp = stampFromIso(existing?.exportedAt ?? new Date().toISOString());
+  const root = path.join(paths.syncDir, "history");
+  let dest = path.join(root, stamp);
+  if (await exists(dest)) {
+    dest = path.join(root, `${stamp}-${Date.now().toString(36)}`);
+  }
+  await mkdir(dest, { recursive: true });
+  await copyFile(paths.remoteDbPath, path.join(dest, "app.db"));
+  if (existing) {
+    await writeFile(
+      path.join(dest, "manifest.json"),
+      `${JSON.stringify(existing, null, 2)}\n`,
+      "utf8",
+    );
+  } else if (await exists(paths.remoteManifestPath)) {
+    await copyFile(
+      paths.remoteManifestPath,
+      path.join(dest, "manifest.json"),
+    );
+  }
+
+  // prune
+  const keep = historyKeepCount();
+  const entries = (await readdir(root, { withFileTypes: true }))
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort((a, b) => b.localeCompare(a));
+  for (const name of entries.slice(keep)) {
+    await rm(path.join(root, name), { recursive: true, force: true });
+  }
+
+  return dest;
+}
+
 async function main() {
   const paths = await ensureSyncDir();
   const snapshotPath = path.join(LOCAL_SYNC_TMP_DIR, "app.db");
@@ -137,6 +198,8 @@ async function main() {
     app: SYNC_APP_FOLDER,
   };
 
+  const archived = await archiveCurrentRemote(paths);
+
   await copyFile(snapshotPath, remoteDbTmp);
   await writeFile(
     remoteManifestTmp,
@@ -153,6 +216,7 @@ async function main() {
   await unlink(snapshotPath).catch(() => {});
 
   console.log("uploaded:", paths.remoteDbPath);
+  if (archived) console.log("history:", archived);
   console.log("localManifest:", LOCAL_MANIFEST_PATH);
   console.log("manifest:", JSON.stringify(manifest, null, 2));
 }

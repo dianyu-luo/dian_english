@@ -1,6 +1,7 @@
 import "server-only";
 
 import { stat } from "fs/promises";
+import { historyKeepCount, listHistory } from "./history";
 import {
   compareManifests,
   readManifest,
@@ -27,6 +28,9 @@ export type SyncStatus = {
   compare: ManifestCompare | null;
   /** 本地库文件 mtime 晚于上次上传时间，可能有未同步更改 */
   localDirty: boolean;
+  historyCount: number;
+  historyKeep: number;
+  historyLatestId: string | null;
 };
 
 async function fileMeta(filePath: string): Promise<{
@@ -44,6 +48,8 @@ export async function getSyncStatus(): Promise<SyncStatus> {
   const localDbExists = await pathExists(LOCAL_DB_PATH);
   const resolved = await resolveSyncPaths();
 
+  const historyKeep = historyKeepCount();
+
   if (!resolved.ok) {
     return {
       ok: false,
@@ -57,16 +63,21 @@ export async function getSyncStatus(): Promise<SyncStatus> {
       remoteManifest: null,
       compare: null,
       localDirty: localDbExists,
+      historyCount: 0,
+      historyKeep,
+      historyLatestId: null,
     };
   }
 
   const { paths } = resolved;
-  const [localDb, remoteDb, localManifest, remoteManifest] = await Promise.all([
-    fileMeta(paths.localDbPath),
-    fileMeta(paths.remoteDbPath),
-    readManifest(LOCAL_MANIFEST_PATH),
-    readManifest(paths.remoteManifestPath),
-  ]);
+  const [localDb, remoteDb, localManifest, remoteManifest, history] =
+    await Promise.all([
+      fileMeta(paths.localDbPath),
+      fileMeta(paths.remoteDbPath),
+      readManifest(LOCAL_MANIFEST_PATH),
+      readManifest(paths.remoteManifestPath),
+      listHistory(paths.syncDir),
+    ]);
 
   let compare: ManifestCompare | null = null;
   if (localManifest || remoteManifest) {
@@ -101,5 +112,8 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     remoteManifest,
     compare,
     localDirty,
+    historyCount: history.length,
+    historyKeep,
+    historyLatestId: history[0]?.id ?? null,
   };
 }

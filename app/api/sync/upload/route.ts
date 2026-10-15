@@ -10,6 +10,7 @@ export async function POST() {
       syncDir: result.syncDir,
       remoteDbPath: result.remoteDbPath,
       manifest: result.manifest,
+      history: result.history,
       status,
     });
   } catch (err) {

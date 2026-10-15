@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@libsql/client";
 import { copyFile, rename, unlink, writeFile } from "fs/promises";
 import path from "path";
+import { archiveCurrentRemote, type HistoryEntry } from "./history";
 import {
   buildManifest,
   hashFile,
@@ -21,6 +22,8 @@ export type UploadResult = {
   syncDir: string;
   remoteDbPath: string;
   manifest: SyncManifest;
+  /** 覆盖前归档的旧版；首次上传为 null */
+  history: HistoryEntry | null;
 };
 
 function toSqlPath(filePath: string): string {
@@ -63,7 +66,7 @@ async function atomicMove(tmpPath: string, destPath: string): Promise<void> {
 
 /**
  * 将本地 data/app.db 安全快照上传到 OneDrive/db/dian_english。
- * 先写 *.tmp，再替换正式文件。
+ * 覆盖前把现行云端文件归档到 history/。
  */
 export async function uploadDbToOneDrive(): Promise<UploadResult> {
   const paths: SyncPaths = await ensureSyncDir();
@@ -75,6 +78,12 @@ export async function uploadDbToOneDrive(): Promise<UploadResult> {
 
   const { contentHash, byteSize } = await hashFile(snapshotPath);
   const manifest = buildManifest({ contentHash, byteSize });
+
+  const history = await archiveCurrentRemote({
+    syncDir: paths.syncDir,
+    remoteDbPath: paths.remoteDbPath,
+    remoteManifestPath: paths.remoteManifestPath,
+  });
 
   await copyFile(snapshotPath, remoteDbTmp);
   await writeFile(
@@ -92,5 +101,6 @@ export async function uploadDbToOneDrive(): Promise<UploadResult> {
     syncDir: paths.syncDir,
     remoteDbPath: paths.remoteDbPath,
     manifest,
+    history,
   };
 }
