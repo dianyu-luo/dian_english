@@ -662,19 +662,31 @@ export function PdfMarkerMenu<A>({
               >
                 <div
                   role="menu"
-                  className="min-w-[6.5rem] border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
+                  className="max-h-[min(20rem,70vh)] min-w-[7.5rem] overflow-y-auto border border-[#d6d3d1] bg-[#faf8f4] py-1 shadow-md"
                 >
-                  {PIN_KINDS.filter((k) => k !== menu.kind).map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      role="menuitem"
-                      className="block w-full px-3 py-1.5 text-left text-sm text-[#1c1917] hover:bg-[#efebe4]"
-                      onClick={() => onChangePinType(menu.pin, k)}
-                    >
-                      {pinKindLabel(k)}
-                    </button>
-                  ))}
+                  {PIN_KINDS.map((k) => {
+                    const current = k === menu.kind;
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        role="menuitem"
+                        aria-current={current ? "true" : undefined}
+                        disabled={current}
+                        className={`block w-full px-3 py-1.5 text-left text-sm ${
+                          current
+                            ? "bg-[#efebe4] text-[#57534e]"
+                            : "text-[#1c1917] hover:bg-[#efebe4]"
+                        }`}
+                        onClick={() => {
+                          if (current) return;
+                          onChangePinType(menu.pin, k);
+                        }}
+                      >
+                        {pinKindLabel(k)}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ) : null}
